@@ -43,7 +43,7 @@
 #endif
 #ifndef WIN32
 #include <sys/time.h>
-#include <sys/ucontext.h>
+//#include <sys/ucontext.h>
 #endif
 
 #endif /* !CONFIG_TCCBOOT */
@@ -68,11 +68,6 @@
 
 /* assembler debug */
 //#define ASM_DEBUG
-
-/* target selection */
-//#define TCC_TARGET_I386   /* i386 code generator */
-//#define TCC_TARGET_ARM    /* ARMv4 code generator */
-//#define TCC_TARGET_C67    /* TMS320C67xx code generator */
 
 /* default target is I386 */
 #if !defined(TCC_TARGET_I386) && !defined(TCC_TARGET_ARM) && \
@@ -174,7 +169,7 @@ typedef struct SValue {
 typedef struct Sym {
     int v;    /* symbol token */
     long r;    /* associated register */
-    long c;    /* associated number */
+    uintptr_t c;    /* associated number */
     CType type;    /* associated type */
     struct Sym *next; /* next related symbol */
     struct Sym *prev; /* prev symbol in stack */
@@ -891,7 +886,7 @@ void warning(const char *fmt, ...);
 #endif
 
 #ifdef TCC_TARGET_816
-#include "816-gen.c"
+#include "816-gen.cpp"
 #endif
 
 /********************************************************/
@@ -1006,7 +1001,7 @@ static inline void *tcc_realloc(void *ptr, unsigned long size)
 static char *tcc_strdup(const char *str)
 {
     char *ptr;
-    ptr = tcc_malloc(strlen(str) + 1);
+    ptr = (char*) tcc_malloc(strlen(str) + 1);
     strcpy(ptr, str);
     return ptr;
 }
@@ -1028,7 +1023,7 @@ static void dynarray_add(void ***ptab, int *nb_ptr, void *data)
             nb_alloc = 1;
         else
             nb_alloc = nb * 2;
-        pp = tcc_realloc(pp, nb_alloc * sizeof(void *));
+        pp = (void**) tcc_realloc(pp, nb_alloc * sizeof(void *));
         if (!pp)
             error("memory full");
         *ptab = pp;
@@ -1043,7 +1038,7 @@ static Sym *__sym_malloc(void)
     Sym *sym_pool, *sym, *last_sym;
     int i;
 
-    sym_pool = tcc_malloc(SYM_POOL_NB * sizeof(Sym));
+    sym_pool = (Sym*) tcc_malloc(SYM_POOL_NB * sizeof(Sym));
 
     last_sym = sym_free_first;
     sym = sym_pool;
@@ -1076,7 +1071,7 @@ Section *new_section(TCCState *s1, const char *name, int sh_type, int sh_flags)
 {
     Section *sec;
 
-    sec = tcc_mallocz(sizeof(Section) + strlen(name));
+    sec = (Section*) tcc_mallocz(sizeof(Section) + strlen(name));
     strcpy(sec->name, name);
     sec->sh_type = sh_type;
     sec->sh_flags = sh_flags;
@@ -1121,7 +1116,7 @@ static void section_realloc(Section *sec, unsigned long new_size)
         size = 1;
     while (size < new_size)
         size = size * 2;
-    data = tcc_realloc(sec->data, size);
+    data = (unsigned char*) tcc_realloc(sec->data, size);
     if (!data)
         error("memory full");
     memset(data + sec->data_allocated, 0, size - sec->data_allocated);
@@ -1412,13 +1407,13 @@ static TokenSym *tok_alloc_new(TokenSym **pts, const char *str, int len)
     /* expand token table if needed */
     i = tok_ident - TOK_IDENT;
     if ((i % TOK_ALLOC_INCR) == 0) {
-        ptable = tcc_realloc(table_ident, (i + TOK_ALLOC_INCR) * sizeof(TokenSym *));
+        ptable = (TokenSym**) tcc_realloc(table_ident, (i + TOK_ALLOC_INCR) * sizeof(TokenSym *));
         if (!ptable)
             error("memory full");
         table_ident = ptable;
     }
 
-    ts = tcc_malloc(sizeof(TokenSym) + len);
+    ts = (TokenSym*) tcc_malloc(sizeof(TokenSym) + len);
     table_ident[i] = ts;
     ts->tok = tok_ident++;
     ts->sym_define = NULL;
@@ -1620,7 +1615,7 @@ char *get_tok_str(int v, CValue *cv)
     default:
         if (v < TOK_IDENT) {
             /* search in two bytes table */
-            q = tok_two_chars;
+            q = reinterpret_cast<unsigned char*>(tok_two_chars);
             while (*q) {
                 if (q[2] == v) {
                     *p++ = q[0];
@@ -1644,11 +1639,11 @@ char *get_tok_str(int v, CValue *cv)
         }
         break;
     }
-    return cstr_buf.data;
+    return (char*) cstr_buf.data;
 }
 
 /* push, without hashing */
-static Sym *sym_push2(Sym **ps, int v, int t, int c)
+static Sym *sym_push2(Sym **ps, int v, int t, uintptr_t c)
 {
     Sym *s;
     s = sym_malloc();
@@ -1777,7 +1772,7 @@ BufferedFile *tcc_open(TCCState *s1, const char *filename)
     fd = open(filename, O_RDONLY | O_BINARY);
     if (fd < 0)
         return NULL;
-    bf = tcc_malloc(sizeof(BufferedFile));
+    bf = (BufferedFile*) tcc_malloc(sizeof(BufferedFile));
     if (!bf) {
         close(fd);
         return NULL;
@@ -2278,7 +2273,7 @@ static int *tok_str_realloc(TokenString *s)
     } else {
         len = s->allocated_len * 2;
     }
-    str = tcc_realloc(s->str, len * sizeof(int));
+    str = (int*) tcc_realloc(s->str, len * sizeof(int));
     if (!str)
         error("memory full");
     s->allocated_len = len;
@@ -2438,7 +2433,7 @@ static inline void define_push(int v, int macro_type, int *str, Sym *first_arg)
 {
     Sym *s;
 
-    s = sym_push2(&define_stack, v, macro_type, (long)str);
+    s = sym_push2(&define_stack, v, macro_type, (uintptr_t)str);
     s->next = first_arg;
     table_ident[v - TOK_IDENT]->sym_define = s;
 }
@@ -2524,7 +2519,7 @@ static void label_pop(Sym **ptop, Sym *slast)
             if (s->c) {
                 /* define corresponding symbol. A size of
                    1 is put. */
-                put_extern_sym(s, cur_text_section, (long)s->next, 1);
+                put_extern_sym(s, cur_text_section, (uintptr_t)s->next, 1);
             }
         }
         /* remove label */
@@ -2652,7 +2647,7 @@ static inline int hash_cached_include(int type, const char *filename)
 
     h = TOK_HASH_INIT;
     h = TOK_HASH_FUNC(h, type);
-    s = filename;
+    s = reinterpret_cast<const unsigned char*>(filename);
     while (*s) {
         h = TOK_HASH_FUNC(h, *s);
         s++;
@@ -2691,7 +2686,7 @@ static inline void add_cached_include(TCCState *s1, int type,
 #ifdef INC_DEBUG
     printf("adding cached '%s' %s\n", filename, get_tok_str(ifndef_macro, NULL));
 #endif
-    e = tcc_malloc(sizeof(CachedInclude) + strlen(filename));
+    e = (CachedInclude*) tcc_malloc(sizeof(CachedInclude) + strlen(filename));
     if (!e)
         return;
     e->type = type;
@@ -3606,7 +3601,7 @@ static inline void next_nomacro1(void)
                     goto token_found;
                 pts = &(ts->hash_next);
             }
-            ts = tok_alloc_new(pts, p1, len);
+            ts = tok_alloc_new(pts, (const char*)p1, len);
         token_found: ;
         } else {
             /* slower case */
@@ -3623,7 +3618,7 @@ static inline void next_nomacro1(void)
                 cstr_ccat(&tokcstr, c);
                 PEEKC(c, p);
             }
-            ts = tok_alloc(tokcstr.data, tokcstr.size);
+            ts = tok_alloc((const char*) tokcstr.data, tokcstr.size);
         }
         tok = ts->tok;
         break;
@@ -3700,7 +3695,7 @@ static inline void next_nomacro1(void)
             
             /* eval the escape (should be done as TOK_PPNUM) */
             cstr_reset(&tokcstr);
-            parse_escape_string(&tokcstr, str.data, is_long);
+            parse_escape_string(&tokcstr, (const uint8_t*) str.data, is_long);
             cstr_free(&str);
 
             if (sep == '\'') {
@@ -4098,7 +4093,7 @@ static int macro_subst_tok(TokenString *tok_str,
                     next_nomacro();
                 }
                 tok_str_add(&str, 0);
-                sym_push2(&args, sa->v & ~SYM_FIELD, sa->type.t, (long)str.str);
+                sym_push2(&args, sa->v & ~SYM_FIELD, sa->type.t, (uintptr_t)str.str);
                 sa = sa->next;
                 if (tok == ')') {
                     /* special case for gcc var args: add an empty
@@ -4219,26 +4214,25 @@ static inline int *macro_twosharps(const int *macro_str)
                                     goto error_pasting;
                             }
                         }
-                        ts = tok_alloc(cstr.data, strlen(cstr.data));
+                        ts = tok_alloc((const char*) cstr.data, strlen((const char*) cstr.data));
                         tok = ts->tok; /* modify current token */
                     }
                 } else {
-                    const char *str = cstr.data;
                     const unsigned char *q;
 
                     /* we look for a valid token */
                     /* XXX: do more extensive checks */
-                    if (!strcmp(str, ">>=")) {
+                    if (!strcmp((const char*) cstr.data, ">>=")) {
                         tok = TOK_A_SAR;
-                    } else if (!strcmp(str, "<<=")) {
+                    } else if (!strcmp((const char*) cstr.data, "<<=")) {
                         tok = TOK_A_SHL;
-                    } else if (strlen(str) == 2) {
+                    } else if (strlen((const char*) cstr.data) == 2) {
                         /* search in two bytes table */
-                        q = tok_two_chars;
+                        q = (const unsigned char*) tok_two_chars;
                         for(;;) {
                             if (!*q)
                                 goto error_pasting;
-                            if (q[0] == str[0] && q[1] == str[1])
+                            if (q[0] == ((const char*)cstr.data)[0] && q[1] == ((const char*)cstr.data)[1])
                                 break;
                             q += 3;
                         }
@@ -4823,7 +4817,7 @@ int gv(int rc)
             offset = (data_section->data_offset + align - 1) & -align;
             data_section->data_offset = offset;
             /* XXX: not portable yet */
-            ptr = section_ptr_add(data_section, size);
+            ptr = (int*) section_ptr_add(data_section, size);
             size = size >> 2;
 #ifdef TCC_TARGET_816
             float_to_woz(vtop->c.f, (unsigned char*)ptr);
@@ -8391,9 +8385,9 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
             }
             /* label already defined */
             if (s->r & LABEL_FORWARD) 
-                s->next = (void *)(long)gjmp((long)s->next);
+                s->next = (Sym *)gjmp((uintptr_t)s->next);
             else
-                gjmp_addr((long)s->next);
+                gjmp_addr((uintptr_t)s->next);
             next();
         } else {
             expect("label identifier");
@@ -8415,7 +8409,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
                    this is a label, and what its name is. gsym_addr() resets
                    label_workaround to NULL when done. */
                 label_workaround = get_tok_str(s->v, NULL);
-                gsym((long)s->next);
+                gsym((uintptr_t)s->next);
 #endif
                 s->r = LABEL_DEFINED;
             } else {
@@ -8423,10 +8417,10 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
 #ifdef TCC_TARGET_816
                 /* see above */
                 label_workaround = get_tok_str(s->v, NULL);
-                gsym((long)s->next); /* without this, labels end up in the wrong place (too late) */
+                gsym((uintptr_t)s->next); /* without this, labels end up in the wrong place (too late) */
 #endif
             }
-            s->next = (void *)(long)ind;
+            s->next = (Sym*)ind;
             /* we accept this, but it is a mistake */
         block_after_label:
             if (tok == '}') {
@@ -8651,7 +8645,7 @@ static void init_putv(CType *type, Section *sec, unsigned long c,
             break;
 #ifdef TCC_TARGET_816
         case VT_FLOAT:
-            float_to_woz(vtop->c.f, ptr);
+            float_to_woz(vtop->c.f, (unsigned char*) ptr);
             break;
 #endif
         case VT_DOUBLE:
@@ -9019,7 +9013,7 @@ static void decl_initializer_alloc(CType *type, AttributeDef *ad, int r,
             /* add padding between regions */
             loc--;
             /* then add local bound info */
-            bounds_ptr = section_ptr_add(lbounds_section, 2 * sizeof(unsigned long));
+            bounds_ptr = (unsigned long*) section_ptr_add(lbounds_section, 2 * sizeof(unsigned long));
             bounds_ptr[0] = addr;
             bounds_ptr[1] = size;
         }
@@ -9134,7 +9128,7 @@ static void decl_initializer_alloc(CType *type, AttributeDef *ad, int r,
 
             greloc(bounds_section, sym, bounds_section->data_offset, R_DATA_32);
             /* then add global bound info */
-            bounds_ptr = section_ptr_add(bounds_section, 2 * sizeof(long));
+            bounds_ptr = (unsigned long*) section_ptr_add(bounds_section, 2 * sizeof(long));
             bounds_ptr[0] = 0; /* relocated */
             bounds_ptr[1] = size;
         }
@@ -9419,7 +9413,7 @@ static void decl(int l)
                     }
                     tok_str_add(&func_str, -1);
                     tok_str_add(&func_str, 0);
-                    sym->r = (long)func_str.str;
+                    sym->r = (uintptr_t)func_str.str;
                 } else {
                     /* compute text section */
                     cur_text_section = ad.section;
@@ -9628,17 +9622,17 @@ void tcc_define_symbol(TCCState *s1, const char *sym, const char *value)
 {
     BufferedFile bf1, *bf = &bf1;
 
-    pstrcpy(bf->buffer, IO_BUF_SIZE, sym);
-    pstrcat(bf->buffer, IO_BUF_SIZE, " ");
+    pstrcpy((char*) bf->buffer, IO_BUF_SIZE, sym);
+    pstrcat((char*) bf->buffer, IO_BUF_SIZE, " ");
     /* default value */
     if (!value) 
         value = "1";
-    pstrcat(bf->buffer, IO_BUF_SIZE, value);
+    pstrcat((char*) bf->buffer, IO_BUF_SIZE, value);
     
     /* init file structure */
     bf->fd = -1;
     bf->buf_ptr = bf->buffer;
-    bf->buf_end = bf->buffer + strlen(bf->buffer);
+    bf->buf_end = bf->buffer + strlen((const char*) bf->buffer);
     *bf->buf_end = CH_EOB;
     bf->filename[0] = '\0';
     bf->line_num = 1;
@@ -9683,7 +9677,7 @@ static void asm_global_instr(void)
 }
 #endif
 
-#include "tccelf.c"
+#include "tccelf.cpp"
 
 TCCState *tcc_new(void)
 {
@@ -9692,7 +9686,7 @@ TCCState *tcc_new(void)
     TokenSym *ts;
     int i, c;
 
-    s = tcc_mallocz(sizeof(TCCState));
+    s = (TCCState*) tcc_mallocz(sizeof(TCCState));
     if (!s)
         return NULL;
     tcc_state = s;
@@ -10290,7 +10284,7 @@ static int expand_args(char ***pargv, const char *str)
         while (*str != '\0' && !is_space(*str))
             str++;
         len = str - s1;
-        arg = tcc_malloc(len + 1);
+        arg = (char*) tcc_malloc(len + 1);
         memcpy(arg, s1, len);
         arg[len] = '\0';
         dynarray_add((void ***)&argv, &argc, arg);
@@ -10639,10 +10633,10 @@ int main(int argc, char **argv)
 
     {
         if (s->optimize) {
-            char *outfile_pre = tcc_malloc(strlen(outfile) + 4 + 1);
+            char *outfile_pre = (char*) tcc_malloc(strlen(outfile) + 4 + 1);
             sprintf(outfile_pre, "%s.pre", outfile);
             tcc_output_file(s, outfile_pre);
-            char *cmd = tcc_malloc(strlen(outfile_pre) + strlen(outfile) + 100);
+            char *cmd = (char*) tcc_malloc(strlen(outfile_pre) + strlen(outfile) + 100);
             sprintf(cmd, CONFIG_TCCDIR "/bin/816-opt %s >%s", outfile_pre, outfile);
             if (system(cmd)) {
                 error("optimizer failed");

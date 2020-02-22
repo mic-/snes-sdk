@@ -104,7 +104,7 @@ char current_fn[256] = "";
    unique name. not knowing how to choose one deterministically (filename?
    could be more than one file with the same name...), I chose to use a
    random number, saved to static_prefix. */
-char* static_prefix = "__tccs_";
+constexpr const char* static_prefix = "__tccs_";
 
 char* label_workaround = NULL;
 struct labels_816 {
@@ -720,9 +720,9 @@ void gfunc_call(int nb_args)
   vtop--;
 }
 
-int gjmp(int t)
+uintptr_t gjmp(int t)
 {
-  int r;
+  uintptr_t r;
   int i;
   // remember this jump so we can insert a label before the destination later
   pr("; gjmp_addr %d at %d\n",t,ind);
@@ -827,7 +827,7 @@ int gtst(int inv, int t)
 void gen_opi(int op)
 {
   int r, fr, fc, ft, c, r5;
-  char* opcrem = 0, *opcalc = 0, *opcarry = 0;
+  const char* opcrem = nullptr, *opcalc = nullptr, *opcarry = nullptr;
   int optone;
   int docarry;
   int sign;

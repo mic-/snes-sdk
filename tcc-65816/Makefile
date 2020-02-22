@@ -4,7 +4,7 @@
 include config.mak
 
 #CFLAGS=-pg -fprofile-arcs -ftest-coverage -O0 -g -Wall -Wno-pointer-sign
-CFLAGS=-O2 -g -Wall -Wno-pointer-sign
+CFLAGS=-O2 -g -Wall -std=c++14
 ifndef CONFIG_WIN32
 BCHECK_O=bcheck.o
 endif
@@ -130,7 +130,7 @@ endif
 endif
 
 # Cross Tiny C Compilers
-816-tcc$(EXESUF): tcc.c 816-gen.c tccelf.c tcctok.h
+816-tcc$(EXESUF): tcc.cpp 816-gen.cpp tccelf.cpp tcctok.h
 	$(CC) $(CFLAGS) -DTCC_TARGET_816 -o $@ $< $(LIBS)
 
 # windows utilities

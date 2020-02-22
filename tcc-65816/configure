@@ -27,8 +27,8 @@ tccdir=""
 includedir=""
 mandir=""
 cross_prefix=""
-cc="gcc"
-host_cc="gcc"
+cc="g++"
+host_cc="g++"
 ar="ar"
 make="make"
 strip="strip"
@@ -163,20 +163,7 @@ fi
 fi
 
 # check gcc version
-cat > $TMPC <<EOF
-int main(void) {
-#if __GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 2)
-return 0;
-#else
-#error gcc < 3.2
-#endif
-}
-EOF
-
-gcc_major="2"
-if $cc -o $TMPO $TMPC 2> /dev/null ; then
-   gcc_major="3"
-fi
+gcc_major=`$cc -dumpversion | cut -f1 -d.`
 
 if test x"$1" = x"-h" -o x"$1" = x"--help" ; then
 cat << EOF
