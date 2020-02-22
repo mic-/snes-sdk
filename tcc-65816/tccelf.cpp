@@ -949,9 +949,8 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
           int next_jump_pos = 0;	/* the next offset in the text section where we will look for a jump target */
           for(j = 0; j < size; j++) {
             //Elf32_Sym* esym;
-            for(k = 0; k < labels; k++) {
-              //fprintf(stderr,"label %s at %d\n", label[k].name, label[k].pos);
-              if(label[k].pos == j) fprintf(f, "%s%s:\n", static_prefix /* "__local_" */, label[k].name);
+            for (const auto& lbl : label) {
+              if(lbl.pos == j) fprintf(f, "%s%s:\n", static_prefix /* "__local_" */, lbl.name);
             }
             /* insert jump labels */
             if(next_jump_pos == j) {

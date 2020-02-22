@@ -20,6 +20,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <vector>
+
 #define LDOUBLE_SIZE 12 // not actually supported
 #define LDOUBLE_ALIGN 4
 #define MAX_ALIGN 8
@@ -111,8 +113,7 @@ struct labels_816 {
   char* name;
   int pos;
 };
-struct labels_816 label[1000];
-int labels = 0;
+std::vector<labels_816> label;
 
 char* get_sym_str(Sym* sym)
 {
@@ -180,9 +181,7 @@ void gsym_addr(int t, int a)
      is a label and what its name is, so that we can remember its name
      and position so the output code can insert it correctly */
   if(label_workaround) {
-    label[labels].name = label_workaround;
-    label[labels].pos = a;
-    labels++;
+    label.push_back({.name = label_workaround, .pos = a});
     label_workaround = NULL;
   }
   int i;
