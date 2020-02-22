@@ -89,9 +89,6 @@ static int put_elf_sym(Section *s,
     int nbuckets, h;
     Elf32_Sym *sym;
     Section *hs;
-    //fprintf(stderr,"\\\\\\ putting elf symbol %s in section type %d, section %p, value %ld size %ld info %d other %d\n",name,s->sh_type,s,value,size,info,other);
-    // HACK
-    //info |= 0x10;
     sym = (Elf32_Sym*) section_ptr_add(s, sizeof(Elf32_Sym));
     if (name)
         name_offset = put_elf_str(s->link, name);
@@ -440,13 +437,9 @@ static void relocate_section(TCCState *s1, Section *s)
         switch(type) {
 #if defined(TCC_TARGET_816)
         case R_DATA_32:
-            //fprintf(stderr,"___ relocating at 0x%lx to 0x%lx, sr %p, s %p, shndx %d name %s info 0x%x other 0x%x relocindex 0x%x ptr 0x%x\n",addr,val,sr,s,sym->st_shndx,symtab_section->link->data + sym->st_name, sym->st_info, sym->st_other,relocindices[addr],*(unsigned int*)ptr);
             if(relocptrs[((uintptr_t)ptr)&0xfffff]) error("relocptrs collision");
-            /* if(ELF32_ST_BIND(sym->st_info) == STB_LOCAL) {
-              relocptrs[((unsigned int)ptr)&0xfffff] = calloc(1,strlen(static_prefix) + strlen(symtab_section->link->data + sym->st_name) + 1);
-              sprintf(relocptrs[((unsigned int)ptr)&0xfffff], "%s%s", static_prefix, symtab_section->link->data + sym->st_name);
-            }
-            else */ relocptrs[((uintptr_t)ptr)&0xfffff] = ((char *) symtab_section->link->data) + sym->st_name;
+
+            relocptrs[((uintptr_t)ptr)&0xfffff] = ((char *) symtab_section->link->data) + sym->st_name;
             /* no need to change the value at ptr, we only need the offset, and that's already there */
             break;
         default:
@@ -937,10 +930,8 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
            strcmp(".rel.data", s->name) == 0 ||
            strcmp(".shstrtab", s->name) == 0) continue;
         
-        //fprintf(f,"\n;.section %p\n",s->reloc);
 
         size = s->sh_size;	/* section size in bytes */
-        //fprintf(stderr,"%d bytes: %s\n",size,s->name);
 
         if(s == text_section) {
           /* functions each have their own section (otherwise WLA DX is
@@ -948,7 +939,6 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
              do not have to print a function header here */
           int next_jump_pos = 0;	/* the next offset in the text section where we will look for a jump target */
           for(j = 0; j < size; j++) {
-            //Elf32_Sym* esym;
             for (const auto& lbl : label) {
               if(lbl.pos == j) fprintf(f, "%s%s:\n", static_prefix /* "__local_" */, lbl.name);
             }
@@ -959,7 +949,6 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
                 /* while we're here, look for the next jump target after this one */
                 if(jump[k][1] > j && jump[k][1] < next_jump_pos) next_jump_pos = jump[k][1];
                 /* write the jump target label(s) for this position */
-                //if(jump[k][1] == j) fprintf(f, LOCAL_LABEL ": ; at %d\n", k, j);
                 if(jump[k][1] == j) fprintf(f, LOCAL_LABEL ":\n", k);
               }
             }
@@ -972,36 +961,17 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
           Elf32_Sym* esym;
           int empty = 1;
           fprintf(f, ".ramsection \".bss\" bank $7e slot 2\n");
-          //fprintf(f, "ramsection.bss dsb 0\n");
           for(j = 0, esym = (Elf32_Sym*) symtab_section->data; j < symtab_section->sh_size / sizeof(Elf32_Sym); esym++, j++) {
-            //fprintf(stderr,"%d/%d symbol %p st_shndx %d\n", j, symtab_section->sh_size / sizeof(Elf32_Sym*), esym, esym->st_shndx);
-            //fprintf(stderr,"esym %p\n", esym);
-            //if(esym->st_shndx < 3) fprintf(stderr,"symbol %s\n", symtab_section->link->data + esym->st_name);
               if(esym->st_shndx == SHN_COMMON
                  && strlen(((const char*) symtab_section->link->data) + esym->st_name)) /* omit nameless symbols (fixes 20041218-1.c) */
               {
                 /* looks like these are the symbols that need to go here,
                    but that is merely an educated guess. works for me, though. */
-                //fprintf(stderr,"COM symbol %s: value %d size %d\n",get_tok_str(ps->v, NULL),esym->st_value,esym->st_size);
                 fprintf(f, "%s%s dsb %d\n", /*ELF32_ST_BIND(esym->st_info) == STB_LOCAL ? static_prefix:*/"", symtab_section->link->data + esym->st_name, esym->st_size);
                 empty = 0;
               }
           }
-#if 0
-          for(;ps;ps=ps->prev) {
-            if((esym = tcc_really_get_symbol(s1, &pval, get_tok_str(ps->v, NULL)))) {
-              if(esym->st_shndx == SHN_COMMON) {
-                /* looks like these are the symbols that need to go here,
-                   but that is merely an educated guess. works for me, though. */
-                //fprintf(stderr,"COM symbol %s: value %d size %d\n",get_tok_str(ps->v, NULL),esym->st_value,esym->st_size);
-                fprintf(f, "%s dsb %d\n", get_tok_str(ps->v, NULL), esym->st_size);
-                empty = 0;
-              }
-            }
-          }
-#endif
           if(empty) fprintf(f, "__local_dummybss dsb 1\n");
-          //fprintf(f, "endsection.bss dsb 0\n");
           fprintf(f, ".ends\n");
         }
         else {	/* .data, .rodata, user-defined sections */
@@ -1021,11 +991,9 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
 
             if(k == 0) {	/* .ramsection */
               fprintf(f, ".ramsection \"ram%s\" bank $7f slot 3\n",s->name);
-              //fprintf(f, "ramsection%s dsb 0\n", s->name);
             }
             else {	/* (ROM) .section */
               fprintf(f, ".section \"%s\" superfree\n", s->name);
-              //fprintf(f, "startsection%s:", s->name);
             }
 
             //int next_symbol_pos = 0;	/* position inside the section at which to look for the next symbol */
@@ -1039,24 +1007,12 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
               char* lastsym = NULL;	/* name of previous symbol (some symbols appear more than once; bug?) */
               int symbol_printed = 0; /* have we already printed a symbol in this run? */
               for(ps = 0, esym = (Elf32_Sym*) symtab_section->data; ps < symtab_section->sh_size / sizeof(Elf32_Sym); esym++, ps++) {
-                //if(!find_elf_sym(symtab_section, get_tok_str(ps->v, NULL))) continue;
                 unsigned long pval;
                 char* symname = ((char*) symtab_section->link->data) + esym->st_name;
                 char* symprefix = "";
                 
-                //fprintf(stderr,"gsym %p name %s type 0x%x num %d reg 0x%x\n",ps,get_tok_str(ps->v,NULL),ps->type.t,ps->c,ps->r);
-
-                /* we do not have to care about external references (handled by the linker) or
-                   functions (handled by the code generator */
-                //if((ps->type.t & VT_EXTERN) || ((ps->type.t & VT_BTYPE) == VT_FUNC)) continue;
-
                 /* look up this symbol */
                 pval = esym->st_value;
-
-                //fprintf(stderr,"/// pval %d, j %d esym->st_shndx %d s->sh_num %d\n",pval,j,esym->st_shndx,s->sh_num);
-                
-                /* look for the next symbol after this one */
-                //if(pval > j && pval < next_symbol_pos) next_symbol_pos = pval;
 
                 /* Is this symbol at this position and in this section? */
                 if(pval != j || esym->st_shndx != s->sh_num) continue;
@@ -1068,11 +1024,6 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
                 /* remember this symbol for the next iteration */
                 lastsym = symname;
                 
-                /* if this is a local (static) symbol, prefix it so the assembler knows this
-                   is file-local. */
-                /* FIXME: breaks for local static variables (name collision) */
-                //if(ELF32_ST_BIND(esym->st_info) == STB_LOCAL) { symprefix = static_prefix; }
-                  
                 /* if this is a ramsection, we now know how large the _previous_ symbol was; print it. */
                 /* if we already printed a symbol in this section, define this symbol as size 0 so it
                    gets the same address as the other ones at this position. */
@@ -1092,10 +1043,8 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
               if(symbol_printed) {
                   /* pointers and arrays may have a symbolic name. find out if that's the case.
                      everything else is literal and handled later */
-                  //if((ps->type.t & (VT_PTR|VT_ARRAY)) /* == VT_PTR */) {
                   unsigned int ptr = *((unsigned int*)&s->data[j]);
                   unsigned char ptrc = *((unsigned char*)&s->data[j]);
-                  //fprintf(stderr, "%%%%%%%%pointer type 0x%x v 0x%x r 0x%x c 0x%x, value 0x%x\n",ps->type.t,ps->v,ps->r,ps->c,ptr);
                   
                   if(k == 0) {	/* .ramsection, just count bytes */
                     bytecount ++;
@@ -1103,7 +1052,6 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
                   else {		/* (ROM) .section, need to output data */
                     if(relocptrs && relocptrs[((uintptr_t)&s->data[j])&0xfffff]) {
                       /* relocated -> print a symbolic pointer */
-                      //fprintf(f,".dw ramsection%s + $%x", s->name, ptr);
                       char* ptrname = relocptrs[((uintptr_t)&s->data[j])&0xfffff];
                       fprintf(f,".dw %s + %d, :%s", ptrname, ptr, ptrname);
                       j+=3;	/* we have handled 3 more bytes than expected */
@@ -1146,23 +1094,7 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
             fprintf(f,"\n.ends\n\n");
           }
         }
-
-#if 0
-        fprintf(stderr,"sh_type %d\n",s->sh_type);
-        fprintf(stderr,"index of L.0 %d\n",find_elf_sym(s, "L.0"));
-
-        if(s->sh_type == SHT_REL) {
-          for(j = 0; j < s->sh_size; j++) {
-            fprintf(stderr,"%02x ", s->data[j]);
-            if(j%4 == 3) fprintf(stderr,"\n");
-          }
-          fprintf(stderr,"\n");
-          //fprintf(stderr,"symtab %s\n",s->data);
-        }
-#endif
-
     }
-    //fprintf(stderr,"index of L.0 in symtab_section %d\n",find_elf_sym(symtab_section,"L.0"));
 }
 
 /* output an ELF file */
