@@ -27,12 +27,15 @@
 
 #else
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdarg.h>
-#include <string.h>
+#include <string>
+#include <vector>
+
+#include <cstdlib>
+#include <cstdio>
+#include <cstdarg>
+#include <cstring>
 #include <errno.h>
-#include <math.h>
+#include <cmath>
 #include <unistd.h>
 #include <signal.h>
 #include <fcntl.h>
@@ -382,7 +385,55 @@ static struct TCCState *tcc_state;
 /* give the path of the tcc libraries */
 static const char *tcc_lib_path = CONFIG_TCCDIR;
 
+static void *tcc_mallocz(unsigned long size);
+static void dynarray_add(void ***ptab, int *nb_ptr, void *data);
+
 struct TCCState {
+    Section *find_section(const std::string& name)
+    {
+        Section *sec;
+        int i;
+        for(i = 1; i < nb_sections; i++) {
+            sec = sections[i];
+            if (name == sec->name)
+                return sec;
+        }
+        /* sections are created as PROGBITS */
+        return new_section(name, SHT_PROGBITS, SHF_ALLOC);
+    }
+
+    Section *new_section(const std::string& name, int sh_type, int sh_flags)
+    {
+        Section *sec;
+
+        sec = (Section*) tcc_mallocz(sizeof(Section) + name.length());
+        strcpy(sec->name, name.c_str());
+        sec->sh_type = sh_type;
+        sec->sh_flags = sh_flags;
+        switch(sh_type) {
+        case SHT_HASH:
+        case SHT_REL:
+        case SHT_DYNSYM:
+        case SHT_SYMTAB:
+        case SHT_DYNAMIC:
+            sec->sh_addralign = 4;
+            break;
+        case SHT_STRTAB:
+            sec->sh_addralign = 1;
+            break;
+        default:
+            sec->sh_addralign = 32; /* default conservative alignment */
+            break;
+        }
+
+        /* only add section if not private */
+        if (!(sh_flags & SHF_PRIVATE)) {
+            sec->sh_num = nb_sections;
+            dynarray_add((void ***)&sections, &nb_sections, sec);
+        }
+        return sec;
+    }
+
     int output_type;
  
     BufferedFile **include_stack_ptr;
@@ -1044,38 +1095,6 @@ static inline void sym_free(Sym *sym)
     sym_free_first = sym;
 }
 
-Section *new_section(TCCState *s1, const char *name, int sh_type, int sh_flags)
-{
-    Section *sec;
-
-    sec = (Section*) tcc_mallocz(sizeof(Section) + strlen(name));
-    strcpy(sec->name, name);
-    sec->sh_type = sh_type;
-    sec->sh_flags = sh_flags;
-    switch(sh_type) {
-    case SHT_HASH:
-    case SHT_REL:
-    case SHT_DYNSYM:
-    case SHT_SYMTAB:
-    case SHT_DYNAMIC:
-        sec->sh_addralign = 4;
-        break;
-    case SHT_STRTAB:
-        sec->sh_addralign = 1;
-        break;
-    default:
-        sec->sh_addralign = 32; /* default conservative alignment */
-        break;
-    }
-
-    /* only add section if not private */
-    if (!(sh_flags & SHF_PRIVATE)) {
-        sec->sh_num = s1->nb_sections;
-        dynarray_add((void ***)&s1->sections, &s1->nb_sections, sec);
-    }
-    return sec;
-}
-
 static void free_section(Section *s)
 {
     tcc_free(s->data);
@@ -1109,26 +1128,10 @@ static void *section_ptr_add(Section *sec, unsigned long size)
 
     offset = sec->data_offset;
     offset1 = offset + size;
-    //fprintf(stderr,"section_ptr_add sec %s data %p size %ld offset %ld offset1 %ld allocd %ld\n", sec->name, sec->data, size,offset,offset1,sec->data_allocated);
     if (offset1 > sec->data_allocated)
         section_realloc(sec, offset1);
     sec->data_offset = offset1;
     return sec->data + offset;
-}
-
-/* return a reference to a section, and create it if it does not
-   exists */
-Section *find_section(TCCState *s1, const char *name)
-{
-    Section *sec;
-    int i;
-    for(i = 1; i < s1->nb_sections; i++) {
-        sec = s1->sections[i];
-        if (!strcmp(name, sec->name)) 
-            return sec;
-    }
-    /* sections are created as PROGBITS */
-    return new_section(s1, name, SHT_PROGBITS, SHF_ALLOC);
 }
 
 #define SECTION_ABS ((void *)1)
@@ -6534,7 +6537,7 @@ static void parse_attribute(AttributeDef *ad)
             skip('(');
             if (tok != TOK_STR)
                 expect("section name");
-            ad->section = find_section(tcc_state, (char *)tokc.cstr->data);
+            ad->section = tcc_state->find_section((char *)tokc.cstr->data);
             next();
             skip(')');
             break;
@@ -9648,10 +9651,10 @@ TCCState *tcc_new(void)
     dynarray_add((void ***)&s->sections, &s->nb_sections, NULL);
 
     /* create standard sections */
-    text_section = new_section(s, ".text", SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR);
-    data_section = new_section(s, ".data", SHT_PROGBITS, SHF_ALLOC | SHF_WRITE);
-    rodata_section = new_section(s, ".rodata", SHT_PROGBITS, SHF_ALLOC);
-    bss_section = new_section(s, ".bss", SHT_NOBITS, SHF_ALLOC | SHF_WRITE);
+    text_section = s->new_section(".text", SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR);
+    data_section = s->new_section(".data", SHT_PROGBITS, SHF_ALLOC | SHF_WRITE);
+    rodata_section = s->new_section(".rodata", SHT_PROGBITS, SHF_ALLOC);
+    bss_section = s->new_section(".bss", SHT_NOBITS, SHF_ALLOC | SHF_WRITE);
 
     /* symbols are always generated for linking stage */
     symtab_section = new_symtab(s, ".symtab", SHT_SYMTAB, 0,
@@ -9845,6 +9848,7 @@ int tcc_add_library(TCCState *s, const char *libraryname)
     return -1;
 }
 
+
 int tcc_add_symbol(TCCState *s, const char *name, unsigned long val)
 {
     add_elf_sym(symtab_section, val, 0, 
@@ -9852,6 +9856,7 @@ int tcc_add_symbol(TCCState *s, const char *name, unsigned long val)
                 SHN_ABS, name);
     return 0;
 }
+
 
 int tcc_set_output_type(TCCState *s, int output_type)
 {
@@ -9880,10 +9885,8 @@ int tcc_set_output_type(TCCState *s, int output_type)
         /* define symbol */
         tcc_define_symbol(s, "__BOUNDS_CHECKING_ON", NULL);
         /* create bounds sections */
-        bounds_section = new_section(s, ".bounds", 
-                                     SHT_PROGBITS, SHF_ALLOC);
-        lbounds_section = new_section(s, ".lbounds", 
-                                      SHT_PROGBITS, SHF_ALLOC);
+        bounds_section  = s->new_section(".bounds",  SHT_PROGBITS, SHF_ALLOC);
+        lbounds_section = s->new_section(".lbounds", SHT_PROGBITS, SHF_ALLOC);
     }
 #endif
 
@@ -9894,9 +9897,9 @@ int tcc_set_output_type(TCCState *s, int output_type)
     /* add debug sections */
     if (do_debug) {
         /* stab symbols */
-        stab_section = new_section(s, ".stab", SHT_PROGBITS, 0);
+        stab_section = s->new_section(".stab", SHT_PROGBITS, 0);
         stab_section->sh_entsize = sizeof(Stab_Sym);
-        stabstr_section = new_section(s, ".stabstr", SHT_STRTAB, 0);
+        stabstr_section = s->new_section(".stabstr", SHT_STRTAB, 0);
         put_elf_str(stabstr_section, "");
         stab_section->link = stabstr_section;
         /* put first entry */

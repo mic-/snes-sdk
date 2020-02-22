@@ -20,9 +20,6 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <string>
-#include <vector>
-
 #define LDOUBLE_SIZE 12 // not actually supported
 #define LDOUBLE_ALIGN 4
 #define MAX_ALIGN 8

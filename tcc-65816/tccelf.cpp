@@ -256,7 +256,7 @@ static void put_elf_reloc(Section *symtab, Section *s, unsigned long offset,
         snprintf(buf, sizeof(buf), ".rel%s", s->name);
         /* if the symtab is allocated, then we consider the relocation
            are also */
-        sr = new_section(tcc_state, buf, SHT_REL, symtab->sh_flags);
+        sr = tcc_state->new_section(buf, SHT_REL, symtab->sh_flags);
         sr->sh_entsize = sizeof(Elf32_Rel);
         sr->link = symtab;
         sr->sh_info = s->sh_num;
@@ -531,7 +531,7 @@ static void build_got(TCCState *s1)
     unsigned char *ptr;
 
     /* if no got, then create it */
-    s1->got = new_section(s1, ".got", SHT_PROGBITS, SHF_ALLOC | SHF_WRITE);
+    s1->got = s1->new_section(".got", SHT_PROGBITS, SHF_ALLOC | SHF_WRITE);
     s1->got->sh_entsize = 4;
     add_elf_sym(symtab_section, 0, 4, ELF32_ST_INFO(STB_GLOBAL, STT_OBJECT), 
                 0, s1->got->sh_num, "_GLOBAL_OFFSET_TABLE_");
@@ -706,16 +706,16 @@ static Section *new_symtab(TCCState *s1,
     Section *symtab, *strtab, *hash;
     int *ptr, nb_buckets;
 
-    symtab = new_section(s1, symtab_name, sh_type, sh_flags);
+    symtab = s1->new_section(symtab_name, sh_type, sh_flags);
     symtab->sh_entsize = sizeof(Elf32_Sym);
-    strtab = new_section(s1, strtab_name, SHT_STRTAB, sh_flags);
+    strtab = s1->new_section(strtab_name, SHT_STRTAB, sh_flags);
     put_elf_str(strtab, "");
     symtab->link = strtab;
     put_elf_sym(symtab, 0, 0, 0, 0, 0, NULL);
     
     nb_buckets = 1;
 
-    hash = new_section(s1, hash_name, SHT_HASH, hash_sh_flags);
+    hash = s1->new_section(hash_name, SHT_HASH, hash_sh_flags);
     hash->sh_entsize = sizeof(int);
     symtab->hash = hash;
     hash->link = symtab;
@@ -746,7 +746,7 @@ static void add_init_array_defines(TCCState *s1, const char *section_name)
     snprintf(sym_start, sizeof(sym_start), "__%s_start", section_name + 1);
     snprintf(sym_end, sizeof(sym_end), "__%s_end", section_name + 1);
 
-    s = find_section(s1, section_name);
+    s = s1->find_section(section_name);
     if (!s) {
         end_offset = 0;
         s = data_section;
@@ -788,7 +788,7 @@ static void tcc_add_runtime(TCCState *s1)
 #ifdef TCC_TARGET_I386
         if (s1->output_type != TCC_OUTPUT_MEMORY) {
             /* add 'call __bound_init()' in .init section */
-            init_section = find_section(s1, ".init");
+            init_section = s1->find_section(".init");
             pinit = section_ptr_add(init_section, 5);
             pinit[0] = 0xe8;
             put32(pinit + 1, -4);
@@ -885,8 +885,6 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
     Section *s;
     int i,j, k, size;
 
-    //fprintf(stderr,"outputting binary, %d sections\n",s1->nb_sections);
-
 #if 0
     Elf32_Sym* esym;
     for(j = 0, esym = (Elf32_Sym*) symtab_section->data; j < symtab_section->sh_size / 4; esym++, j++) {
@@ -914,7 +912,6 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
        to output later in place of this bogus data in the relocptrs[] array. */
     for(i=1;i<s1->nb_sections;i++) {
         s = s1->sections[section_order[i]];
-        //fprintf(stderr,"___ relocating section %p (%s) (reloc %p)\n",s,s->name,s->reloc);
         if (s->reloc && s != s1->got)
                         relocate_section(s1, s);
     }
@@ -922,8 +919,6 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
     /* output sections */
     for(i=1;i<s1->nb_sections;i++) {
         s = s1->sections[section_order[i]];
-        //fprintf(stderr,"section %p, sh_size %ld, sh_num %d\n",s,s->sh_size,s->sh_num);
-
         /* these sections are meaningless when writing plain-text assembler output */        
         if(strcmp(".symtab", s->name) == 0 ||
            strcmp(".strtab", s->name) == 0 ||
@@ -1143,7 +1138,7 @@ int tcc_output_file(TCCState *s1, const char *filename)
             if (file_type == TCC_OUTPUT_EXE) {
                 char *ptr;
                 /* add interpreter section only if executable */
-                interp = new_section(s1, ".interp", SHT_PROGBITS, SHF_ALLOC);
+                interp = s1->new_section(".interp", SHT_PROGBITS, SHF_ALLOC);
                 interp->sh_addralign = 1;
                 ptr = (char*) section_ptr_add(interp, sizeof(elf_interp));
                 strcpy(ptr, elf_interp);
@@ -1156,14 +1151,12 @@ int tcc_output_file(TCCState *s1, const char *filename)
             dynstr = s1->dynsym->link;
             
             /* add dynamic section */
-            dynamic = new_section(s1, ".dynamic", SHT_DYNAMIC, 
-                                  SHF_ALLOC | SHF_WRITE);
+            dynamic = s1->new_section(".dynamic", SHT_DYNAMIC, SHF_ALLOC | SHF_WRITE);
             dynamic->link = dynstr;
             dynamic->sh_entsize = sizeof(Elf32_Dyn);
         
             /* add PLT */
-            s1->plt = new_section(s1, ".plt", SHT_PROGBITS, 
-                                  SHF_ALLOC | SHF_EXECINSTR);
+            s1->plt = s1->new_section(".plt", SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR);
             s1->plt->sh_entsize = 4;
 
             build_got(s1);
@@ -1299,7 +1292,7 @@ int tcc_output_file(TCCState *s1, const char *filename)
     memset(&ehdr, 0, sizeof(ehdr));
 
     /* we add a section for symbols */
-    strsec = new_section(s1, ".shstrtab", SHT_STRTAB, 0);
+    strsec = s1->new_section(".shstrtab", SHT_STRTAB, 0);
     put_elf_str(strsec, "");
     
     /* compute number of sections */
