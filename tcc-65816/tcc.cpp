@@ -69,12 +69,6 @@
 /* assembler debug */
 //#define ASM_DEBUG
 
-/* default target is I386 */
-#if !defined(TCC_TARGET_I386) && !defined(TCC_TARGET_ARM) && \
-    !defined(TCC_TARGET_C67) && !defined(TCC_TARGET_816)
-#define TCC_TARGET_I386
-#endif
-
 #if !defined(WIN32) && !defined(TCC_UCLIBC) && !defined(TCC_TARGET_ARM) && \
     !defined(TCC_TARGET_C67) && !defined(TCC_TARGET_816)
 #define CONFIG_TCC_BCHECK /* enable bound checking code */
@@ -87,11 +81,6 @@
 /* define it to include assembler support */
 #if !defined(TCC_TARGET_ARM) && !defined(TCC_TARGET_C67) && !defined(TCC_TARGET_816)
 #define CONFIG_TCC_ASM
-#endif
-
-/* object format selection */
-#if defined(TCC_TARGET_C67)
-#define TCC_TARGET_COFF
 #endif
 
 #define FALSE 0
@@ -873,18 +862,6 @@ static inline int is_float(int t)
 
 void warning(const char *fmt, ...);
 
-#ifdef TCC_TARGET_I386
-#include "i386-gen.c"
-#endif
-
-#ifdef TCC_TARGET_ARM
-#include "arm-gen.c"
-#endif
-
-#ifdef TCC_TARGET_C67
-#include "c67-gen.c"
-#endif
-
 #ifdef TCC_TARGET_816
 #include "816-gen.cpp"
 #endif
@@ -1192,14 +1169,6 @@ static void put_extern_sym2(Sym *sym, Section *section,
             /* if bound checking is activated, we change some function
                names by adding the "__bound" prefix */
             switch(sym->v) {
-#if 0
-            /* XXX: we rely only on malloc hooks */
-            case TOK_malloc: 
-            case TOK_free: 
-            case TOK_realloc: 
-            case TOK_memalign: 
-            case TOK_calloc: 
-#endif
             case TOK_memcpy: 
             case TOK_memmove:
             case TOK_memset:
@@ -1218,7 +1187,6 @@ static void put_extern_sym2(Sym *sym, Section *section,
             name = buf1;
         }
         if (sym->type.t & VT_STATIC /* && name[0] != 'L' && name[1] != '.' */) {
-            //fprintf(stderr,"verstaticung von %s (current_fn %s)\n", name,current_fn);
             if ((sym->type.t & VT_STATICLOCAL) && current_fn[0] != 0 /*&& !((sym->type.t & VT_BTYPE) == VT_FUNC)*/)
                 sprintf(buf1, "%s_FUNC_%s_", static_prefix, current_fn);
             else
@@ -2795,12 +2763,6 @@ static void preprocess(int is_bof)
             }
             *q = '\0';
             minp();
-#if 0
-            /* eat all spaces and comments after include */
-            /* XXX: slightly incorrect */
-            while (ch1 != '\n' && ch1 != CH_EOF)
-                inp();
-#endif
         } else {
             /* computed #include : either we have only strings or
                we have anything enclosed in '<>' */
@@ -5365,13 +5327,6 @@ void gen_opl(int op)
 #elif defined(TCC_TARGET_C67)
                 error("not implemented (ind %d, a %d)", ind, a);
 #elif defined(TCC_TARGET_816)
-#if 0
-                b = ind;
-                jump[jumps][0] = ind;
-                pr("; cmpll ne a %d b %d op 0x%x op1 0x%x\n", a, b, op, op1);
-                // branches (too short) p("b%s " LOCAL_LABEL "\n", inv?"eq":"ne", jumps++);
-                pr("beq +\nbrl " LOCAL_LABEL "\n+\n", jumps++);
-#endif
                 pr("; cmpll high order word equal?\n");
                 b = ind;
                 jump[jumps][0] = ind;
@@ -6037,16 +5992,13 @@ static void gen_cast(CType *type)
             }
         } else if ((dbt & VT_BTYPE) == VT_BOOL) {
             if(c) {
-              //printf("const samma\n");
               vtop->c.ui = vtop->c.ui ? 1: 0;
             }
             else {
-              //printf("bool samma scho\n");
               /* scalar to bool */
               vpushi(0);
               gen_op(TOK_NE);
             }
-            //asm("int $3");
         } else if ((dbt & VT_BTYPE) == VT_BYTE || 
                    (dbt & VT_BTYPE) == VT_SHORT) {
             force_charshort_cast(dbt);
@@ -6075,7 +6027,6 @@ static void gen_cast(CType *type)
                and the code generator happily loads extra garbage bytes from
                the stack or wherever. */
             if ((sbt & VT_BTYPE) == VT_BYTE || (sbt & VT_BTYPE) == VT_BOOL) {
-              //printf("geevau\n");
               gv(RC_INT);
             }
 #endif
@@ -6099,7 +6050,6 @@ static int type_size(CType *type, int *a)
     } else if (bt == VT_PTR) {
         if (type->t & VT_ARRAY) {
             s = type->ref;
-            //if(s->c == -1) asm("int $3");
             return type_size(&s->type, a) * s->c;
         } else {
             *a = PTR_SIZE;
@@ -6379,7 +6329,6 @@ static void gen_assign_cast(CType *dt)
             warning("assignment makes integer from pointer without a cast");
         }
         /* XXX: more tests */
-        //fprintf(stderr,"### source type %d dest type %d\n", sbt, dbt);
         break;
     case VT_STRUCT:
         tmp_type1 = *dt;
@@ -6407,7 +6356,6 @@ void vstore(void)
     ft = vtop[-1].type.t;
     sbt = vtop->type.t & VT_BTYPE;
     dbt = ft & VT_BTYPE;
-    //fprintf(stderr,"vstore sbt 0x%x dbt 0x%x\n",sbt,dbt);
     if (((sbt == VT_INT || sbt == VT_SHORT) && dbt == VT_BYTE) ||
         (sbt == VT_INT && dbt == VT_SHORT)) {
         /* optimize char/short casts */
@@ -6428,9 +6376,6 @@ void vstore(void)
         /* XXX: optimize if small size */
         if (!nocode_wanted) {
             size = type_size(&vtop->type, &align);
-            //if(size == 2) asm("int $3");
-            //fprintf(stderr,"vtop type 0x%x size %d\n", vtop->type.t, size);
-
             vpush_global_sym(&func_old_type, TOK_memcpy);
 
             /* destination */
@@ -6458,7 +6403,6 @@ void vstore(void)
         bit_size = (ft >> (VT_STRUCT_SHIFT + 6)) & 0x3f;
         /* remove bit field info to avoid loops */
         vtop[-1].type.t = ft & ~(VT_BITFIELD | (-1 << VT_STRUCT_SHIFT));
-        //fprintf(stderr,"vtop[-1].type.t 0x%x\n",vtop[-1].type.t);
 
         gen_assign_cast(&vtop[-1].type);
         nocast = 1; // make sure our hard-earned bitfield value is not cast to bits again (e.g. to bool)
@@ -6543,7 +6487,6 @@ void vstore(void)
         vtop->r |= delayed_cast;
     }
     nocast = 0;
-    //fprintf(stderr,"end vstore\n");
 }
 
 /* post defines POST/PRE add. c is the token ++ or -- */
@@ -6831,16 +6774,6 @@ static void struct_decl(CType *type, int u)
                             if (align > maxalign)
                                 maxalign = align;
                         }
-#if 0
-                        printf("add field %s offset=%d", 
-                               get_tok_str(v, NULL), offset);
-                        if (type1.t & VT_BITFIELD) {
-                            printf(" pos=%d size=%d", 
-                                   (type1.t >> VT_STRUCT_SHIFT) & 0x3f,
-                                   (type1.t >> (VT_STRUCT_SHIFT + 6)) & 0x3f);
-                        }
-                        printf("\n");
-#endif
                         ss = sym_push(v | SYM_FIELD, &type1, 0, offset);
                         *ps = ss;
                         ps = &ss->next;
@@ -8609,14 +8542,6 @@ static void init_putv(CType *type, Section *sec, unsigned long c,
         gen_assign_cast(&dtype);
         bt = type->t & VT_BTYPE;
         ptr = sec->data + c;
-#if 0
-        if(!ptr) {
-          fprintf(stderr,"section allocd %d size %d\n", sec->data_allocated, sec->sh_size);
-          section_realloc(sec, c + PTR_SIZE);
-          sec->sh_size += c + PTR_SIZE;
-          ptr = sec->data + c;
-        }
-#endif
         /* XXX: make code faster ? */
         if (!(type->t & VT_BITFIELD)) {
             bit_pos = 0;
@@ -8627,7 +8552,6 @@ static void init_putv(CType *type, Section *sec, unsigned long c,
             bit_size = (vtop->type.t >> (VT_STRUCT_SHIFT + 6)) & 0x3f;
             bit_mask = (1LL << bit_size) - 1;
         }
-        //fprintf(stderr,"@@@ alrighty, we have bit_pos %d bit_size %d bit_mask %lld\n", bit_pos, bit_size, bit_mask);
         if ((vtop->r & VT_SYM) &&
             (bt == VT_BYTE ||
              bt == VT_SHORT ||
@@ -8840,10 +8764,6 @@ static void decl_initializer(CType *type, Section *sec, unsigned long c,
             if (!parse_btype(&type1, &ad1))
                 expect("cast");
             type_decl(&type1, &ad1, &n, TYPE_ABSTRACT);
-#if 0
-            if (!is_assignable_types(type, &type1))
-                error("invalid type for cast");
-#endif
             skip(')');
         }
         no_oblock = 1;
@@ -8867,12 +8787,6 @@ static void decl_initializer(CType *type, Section *sec, unsigned long c,
             //asm("int $3");
             decl_designator(type, sec, c, NULL, &f, size_only);
             index = f->c;
-            //printf("n %d index %d array_length %d\n",n,index,array_length);
-            if (!size_only && array_length < index) {
-                //printf("; init_putz 1\n");
-                //init_putz(type, sec, c + array_length, 
-                //          index - array_length);
-            }
             index = index + type_size(&f->type, &align1);
             if (index > array_length)
                 array_length = index;
@@ -8885,14 +8799,6 @@ static void decl_initializer(CType *type, Section *sec, unsigned long c,
         }
         if(n == -1) n = s->c = array_length; /* size was unknown before, set it properly */
         
-#if 0
-        /* put zeros at the end */
-        if (!size_only && array_length < n) {
-            printf("; init_putz 2\n");
-            init_putz(type, sec, c + array_length, 
-                      n - array_length);
-        }
-#endif
         if (!no_oblock)
             skip('}');
         while (par_count) {
@@ -9226,11 +9132,6 @@ static void gen_function(Sym *sym)
     gsym(rsym);
     gfunc_epilog();
     cur_text_section->data_offset = ind;
-#if 0
-    Sym* ls = global_label_stack;
-    fprintf(stderr,"dumping global_label_stack\n");
-    for(;ls;ls=ls->next) fprintf(stderr,"--- glabel %s r 0x%x c 0x%x\n",get_tok_str(ls->v,NULL),ls->r,ls->c);
-#endif
     label_pop(&global_label_stack, NULL);
     sym_pop(&local_stack, NULL); /* reset local stack */
     /* end of function */
@@ -9331,13 +9232,6 @@ static void decl(int l)
         while (1) { /* iterate thru each declaration */
             type = btype;
             type_decl(&type, &ad, &v, TYPE_DIRECT);
-#if 0
-            {
-                char buf[500];
-                type_to_str(buf, sizeof(buf), &type, get_tok_str(v, NULL));
-                printf("type = '%s'\n", buf);
-            }
-#endif
             if ((type.t & VT_BTYPE) == VT_FUNC) {
                 /* if old style function prototype, we accept a
                    declaration list */
@@ -9539,20 +9433,6 @@ static int tcc_compile(TCCState *s1)
     func_old_type.t = VT_FUNC;
     func_old_type.ref = sym_push(SYM_FIELD, &int_type, FUNC_CDECL, FUNC_OLD);
 
-#if 0
-    /* define 'void *alloca(unsigned int)' builtin function */
-    {
-        Sym *s1;
-
-        p = anon_sym++;
-        sym = sym_push(p, mk_pointer(VT_VOID), FUNC_CDECL, FUNC_NEW);
-        s1 = sym_push(SYM_FIELD, VT_UNSIGNED | VT_INT, 0, 0);
-        s1->next = NULL;
-        sym->next = s1;
-        sym_push(TOK_alloca, VT_FUNC | (p << VT_STRUCT_SHIFT), VT_CONST, 0);
-    }
-#endif
-
     define_start = define_stack;
 
     if (setjmp(s1->error_jmp_buf) == 0) {
@@ -9722,19 +9602,7 @@ TCCState *tcc_new(void)
 
     /* standard defines */
     tcc_define_symbol(s, "__STDC__", NULL);
-#if defined(TCC_TARGET_I386)
-    tcc_define_symbol(s, "__i386__", NULL);
-#endif
-#if defined(TCC_TARGET_ARM)
-    tcc_define_symbol(s, "__ARM_ARCH_4__", NULL);
-    tcc_define_symbol(s, "__arm_elf__", NULL);
-    tcc_define_symbol(s, "__arm_elf", NULL);
-    tcc_define_symbol(s, "arm_elf", NULL);
-    tcc_define_symbol(s, "__arm__", NULL);
-    tcc_define_symbol(s, "__arm", NULL);
-    tcc_define_symbol(s, "arm", NULL);
-    tcc_define_symbol(s, "__APCS_32__", NULL);
-#endif
+    
 #if defined(TCC_TARGET_816)
     tcc_define_symbol(s, "__65816__", NULL);
 #endif

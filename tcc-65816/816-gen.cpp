@@ -130,7 +130,6 @@ char* get_sym_str(Sym* sym)
   else
 #endif
   if(sym->type.t & VT_STATIC) {
-    //fprintf(stderr,"sym %s type 0x%x current_fn %s token %d\n",symname,sym->type.t,current_fn,sym->v);
     if((sym->type.t & VT_STATICLOCAL) && current_fn[0] != 0 && !((sym->type.t & VT_BTYPE) == VT_FUNC))
       sprintf(name, "%s_FUNC_%s_", static_prefix, current_fn);
     else
@@ -146,7 +145,6 @@ char* get_sym_str(Sym* sym)
   /* add symbol name */
   strcat(name, symname);
 
-  //fprintf(stderr,"symbol %s type 0x%x\n", name, sym->type.t);
   return name;
 }
 
@@ -182,13 +180,11 @@ void gsym_addr(int t, int a)
      is a label and what its name is, so that we can remember its name
      and position so the output code can insert it correctly */
   if(label_workaround) {
-    //fprintf("setting label %s to a %d (t %d)\n", label_workaround, a, t);
     label[labels].name = label_workaround;
     label[labels].pos = a;
     labels++;
     label_workaround = NULL;
   }
-  //if(t == 768398 && a == 768505) asm("int $3");
   int i;
   // pair up the jump with the target address
   // the tcc_output_... function will add a
@@ -246,18 +242,7 @@ void load(int r, SValue* sv)
   length = type_size(&sv->type, &align);
   if((ft & VT_BTYPE) == VT_LLONG) length = 2; // long longs are handled word-wise
   if(ll_workaround) length = 4;
-
-  //pr("; load r 0x%x fr 0x%x ft 0x%x fc 0x%x\n",r,fr,ft,fc);
-
-#if 0
-  // FIXME: Does that make sense?
-  if(fc>0) sign=0;
-  else {
-    sign = 1;
-    fc = -fc;
-  }
-#endif
-  
+ 
   int base = -1;
   v = fr & VT_VALMASK;
   if(fr & VT_LVAL) {
@@ -289,7 +274,6 @@ void load(int r, SValue* sv)
             if(!(ft & VT_UNSIGNED)) pr("xba\nxba\nbpl +\nora.w #$ff00\n+\n");
             pr("sta.b tcc__r%d\n", r);
             break;
-          //case 2: pr("stz.b tcc__r%dh\nldx #%d\nlda.l %s,x\nsta.b tcc__r%d\n", r, fc, sy, r); break;
           case 2: pr("lda.l %s + %d\nsta.b tcc__r%d\n", sy, fc, r); break;
           case 4: pr("lda.l %s + %d\nsta.b tcc__r%d\nlda.l %s + %d + 2\nsta.b tcc__r%dh\n", sy, fc, r, sy, fc, r); break;
           default: error("ICE 1");
@@ -297,7 +281,6 @@ void load(int r, SValue* sv)
         }
       }
       else {	// deref constant pointer
-        //error("ld [%d],tcc__r%d\n",fc,r);
         pr("; deref constant ptr ld [%d],tcc__r%d\n", fc, r);
         if(is_float(ft)) {
           error("dereferencing constant float pointers unimplemented\n");
@@ -341,7 +324,6 @@ void load(int r, SValue* sv)
       else {
         if(base == -1) {	// value of local at fc
           pr("; ld%d [sp,%d],tcc__r%d\n",length,fc,r);
-          //if(length == 2 && fc == -88 && r == 0) asm("int $3");
           fc = adjust_stack(fc, args_size + 2);
           switch(length) {
             case 1:
@@ -349,7 +331,6 @@ void load(int r, SValue* sv)
               if(!(ft & VT_UNSIGNED)) pr("xba\nxba\nbpl +\nora.w #$ff00\n+\n");
               pr("sta.b tcc__r%d\n", r);
               break;
-            //case 2: pr("stz.b tcc__r%dh\nlda %d + __%s_locals + 1,s\nsta.b tcc__r%d\n", r, fc+args_size, current_fn, r); break;
             case 2: pr("lda %d + __%s_locals + 1,s\nsta.b tcc__r%d\n", fc+args_size, current_fn, r); break;
             case 4: pr("lda %d + __%s_locals + 1,s\nsta.b tcc__r%d\nlda %d + __%s_locals + 1,s\nsta.b tcc__r%dh\n", fc+args_size, current_fn, r, fc+args_size + 2, current_fn, r); break;
             default: error("ICE 2"); break;
@@ -366,7 +347,6 @@ void load(int r, SValue* sv)
               if(!(ft & VT_UNSIGNED)) pr("xba\nxba\nbpl +\nora.w #$ff00\n+\n");
               pr("sta.b tcc__r%d\n", r);
               break;
-            //case 2: pr("stz.b tcc__r%dh\nldy #%d\nlda.b [tcc__r%d],y\nsta.b tcc__r%d\n", r, fc, base, r); break;
             case 2:
               if(!fc) pr("lda.b [tcc__r%d]\nsta.b tcc__r%d\n", base, r);
               else pr("ldy #%d\nlda.b [tcc__r%d],y\nsta.b tcc__r%d\n", fc, base, r);
@@ -402,7 +382,6 @@ void load(int r, SValue* sv)
             }
             pr("sta.b tcc__r%d\n", r);
             break;
-          //case 2: pr("stz.b tcc__r%dh\nlda.w #%d\nsta.b tcc__r%d\n", r, sv->c.ul & 0xffff, r); break;
           case 2: pr("lda.w #%d\nsta.b tcc__r%d\n", sv->c.ul & 0xffff, r); break;
           case 4: pr("lda.w #%d\nsta.b tcc__r%d\nlda.w #%d\nsta.b tcc__r%dh\n", sv->c.ul & 0xffff, r, sv->c.ul >> 16, r); break;
           default: error("ICE 4");
@@ -432,13 +411,11 @@ void load(int r, SValue* sv)
       pr("; jmpr(i) v 0x%x r 0x%x fc 0x%x\n",v,r,fc);
       pr("lda #%d\nbra +\n", t);
       gsym(fc);
-      //pr("lda #%d\n+ stz tcc__r%dh\nsta tcc__r%d\n", t^1, r,r);
       pr("lda #%d\n+\nsta.b tcc__r%d\n", t^1, r);	// stz rXh seems to be unnecessary (we only look at the lower word)
       return;
     }
     else if(v < VT_CONST) {	// register value
       if(is_float(ft)) {
-        //error("float 1");
         v -= TREG_F0;
         r -= TREG_F0;
         pr("; fmov tcc__f%d, tcc__f%d\n", v, r);
@@ -480,14 +457,6 @@ void store(int r, SValue* sv)
   }
 #endif
 
-#if 0
-  if(fc >= 0) sign = 0;
-  else {
-    sign = 1;
-    fc = -fc;
-  }
-#endif
-  
   v = fr & VT_VALMASK;
   base = -1;
   if ((fr & VT_LVAL) || fr == VT_LOCAL) {
@@ -528,7 +497,6 @@ void store(int r, SValue* sv)
     }
     if(v == VT_LOCAL) {
       if(r >= TREG_F0) { //is_float(ft)) {
-        //error("float 2");
         if(base < 0) {
           pr("; fst%d tcc__f%d, [sp,%d]\n", length, r - TREG_F0, fc);
           fc = adjust_stack(fc, args_size + 2);
@@ -626,7 +594,6 @@ void gfunc_call(int nb_args)
         if(length != 4) error("unknown float size %d\n", length);
         r = gv(RC_FLOAT);
         pr("; fldpush%d (type 0x%x reg 0x%x) tcc__f%d\n", length, vtop->type.t, vtop->r, r - TREG_F0);
-        //pr("lda.b tcc__f%dh\npha\nlda.b tcc__f%d\npha\n", r - TREG_F0, r - TREG_F0);
         pr("pei (tcc__f%dh)\npei (tcc__f%d)\n", r - TREG_F0, r - TREG_F0);
         args_size += length;
       } else {
@@ -659,14 +626,11 @@ void gfunc_call(int nb_args)
             pr("; ldpush%d (type 0x%x reg 0x%x) tcc__r%d\n", length, vtop->type.t, vtop->r, r);
             switch(length) {
               case 1: pr("sep #$20\nlda.b tcc__r%d\npha\nrep #$20\n", r); break;
-              //case 2: pr("lda.b tcc__r%d\npha\n", r); break;
               case 2: pr("pei (tcc__r%d)\n", r); break;
               case 4:
                 if((vtop->type.t & VT_BTYPE) == VT_LLONG) {
-                  //pr("lda.b tcc__r%d\npha\nlda.b tcc__r%d\npha\n", vtop->r2, r);
                   pr("pei (tcc__r%d)\npei (tcc__r%d)\n", vtop->r2, r);
                 }
-                //else pr("lda.b tcc__r%dh\npha\nlda.b tcc__r%d\npha\n", r, r);
                 else pr("pei (tcc__r%dh)\npei (tcc__r%d)\n", r, r);
                 break;
               default: error("cannot push %d-byte from register", length); break;
@@ -701,8 +665,6 @@ void gfunc_call(int nb_args)
       pr("; symfpcall vtop->sym %p vtop->r 0x%x vtop->type.t 0x%x c 0x%x\n", vtop->sym, vtop->r, vtop->type.t, vtop->c.ui);
       gv(RC_R10);
       pr("; zwei\njsr.l tcc__jsl_r10\n");
-      //char* sy = get_tok_str(vtop->sym->v, NULL);
-      //pr("lda.w #%s\nsta.b tcc__r10\nlda.w #:%s\nsta.b tcc__r10h\njsr.l tcc__jsl_r10\n", sy, sy);
     }
   }
   else
@@ -726,7 +688,6 @@ uintptr_t gjmp(int t)
   int i;
   // remember this jump so we can insert a label before the destination later
   pr("; gjmp_addr %d at %d\n",t,ind);
-  //if(t == 768227 && r == 768398) asm("int $3");
   pr("jmp.w " LOCAL_LABEL "\n",jumps);
   r = ind;
   jump[jumps][0] = r;
@@ -773,12 +734,6 @@ int gtst(int inv, int t)
   else if(v == VT_JMP || v == VT_JMPI) {
     pr("; VT_jmp r %d t %d ji %d inv %d vtop->c.i %d\n",r,t, v&1, inv, vtop->c.i);
     if((v & 1) == inv) {
-#if 0
-      int i;
-      for(i = 0; i < jumps; i++) {
-        if(jump[i][0] || jump[i][1]) pr("; jump[%d] = {%d, %d}\n", i, jump[i][0], jump[i][1]);
-      }
-#endif
       gsym(t);
       t = vtop->c.i;
     }
@@ -863,7 +818,6 @@ void gen_opi(int op)
   }
 
   pr("; gen_opi len %d op %c\n",length,op);
-  //pr("; vtop[0].r 0x%x t 0x%x vtop[-1].r 0x%x t 0x%x\n",vtop[0].r,vtop[0].type.t, vtop[-1].r,vtop[-1].type.t);
   switch(op) {
     // multiplication
     case '*':
@@ -970,7 +924,6 @@ void gen_opi(int op)
       else error("ICE 42");
         
       pr("; %s tcc__r%d (0x%x), tcc__r%d (0x%x) (fr type 0x%x c %d r type 0x%x)\n",opcalc, fr, fr,r,r,vtop[0].type.t,vtop[0].c.ul, vtop[-1].type.t);
-      //if(vtop[0].type.t == 0x24) asm("int $3");
       if(isconst) {
         pr("; length xxy %d vtop->type 0x%x\n", type_size(&vtop->type, &align),vtop->type.t);
         if (length == 4) {
@@ -994,7 +947,6 @@ void gen_opi(int op)
       r5 = get_reg(RC_R5);
       if(isconst) {
         pr("; cmpr(n)eq tcc__r%d, #%d\n", r, fc);
-        //if(r == 0 && fc == 0) asm("int $3");
         pr("ldx #1\nlda.b tcc__r%d\nsec\nsbc #%d\n", r, fc);
       }
       else {
@@ -1019,12 +971,10 @@ void gen_opi(int op)
       r5 = get_reg(RC_R5);
       if(isconst) {
         pr("; cmpcd tcc__r%d, #%d\n", r, fc);
-        //pr("stz.b tcc__r%dh\nldx #1\nlda.b tcc__r%d\nsec\nsbc.w #%d\n",r,r,fc);
         pr("ldx #1\nlda.b tcc__r%d\nsec\nsbc.w #%d\n",r,fc);
       }
       else {
         pr("; cmpcd tcc__r%d, tcc__r%d\n", r, fr);
-        //pr("stz.b tcc__r%dh\nldx #1\nlda.b tcc__r%d\nsec\nsbc.b tcc__r%d\n", r, r, fr);
         pr("ldx #1\nlda.b tcc__r%d\nsec\nsbc.b tcc__r%d\n", r, fr);
       }
       pr("tay\n"); // may need that later for long long
@@ -1296,7 +1246,6 @@ void gfunc_prolog(CType* func_type)
   Sym* sym; //, *sym2;
   Sym* symf;
   int n,addr,size,align;
-  //fprintf(stderr,"gfunc_prolog t %d sym %p\n",func_type->t,func_type->ref);
 
   sym = func_type->ref;
   func_vt = sym->type;
@@ -1333,7 +1282,6 @@ void gfunc_prolog(CType* func_type)
     type = &sym->type;
     sym_push(sym->v & ~SYM_FIELD, type, VT_LOCAL | VT_LVAL, addr);
     size = type_size(type, &align);
-    //fprintf(stderr,"pushed sym type 0x%x size %d addr 0x%x\n",type->t,size,addr);
     addr += size;
     n += size;
   }

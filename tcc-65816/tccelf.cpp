@@ -615,39 +615,6 @@ static void put_got_entry(TCCState *s1,
             if (s1->output_type == TCC_OUTPUT_EXE)
                 offset = plt->data_offset - 16;
         }
-#elif defined(TCC_TARGET_ARM)
-	if (reloc_type == R_ARM_JUMP_SLOT) {
-            Section *plt;
-            uint8_t *p;
-            
-            /* if we build a DLL, we add a %ebx offset */
-            if (s1->output_type == TCC_OUTPUT_DLL)
-                error("DLLs unimplemented!");
-
-            /* add a PLT entry */
-            plt = s1->plt;
-            if (plt->data_offset == 0) {
-                /* first plt entry */
-                p = section_ptr_add(plt, 16);
-		put32(p     , 0xe52de004);
-		put32(p +  4, 0xe59fe010);
-		put32(p +  8, 0xe08fe00e);
-		put32(p + 12, 0xe5bef008);
-            }
-
-            p = section_ptr_add(plt, 16);
-	    put32(p  , 0xe59fc004);
-	    put32(p+4, 0xe08fc00c);
-	    put32(p+8, 0xe59cf000);
-	    put32(p+12, s1->got->data_offset);
-
-            /* the symbol is modified so that it will be relocated to
-               the PLT */
-            if (s1->output_type == TCC_OUTPUT_EXE)
-                offset = plt->data_offset - 16;
-        }
-#elif defined(TCC_TARGET_C67)
-        error("C67 got not implemented");
 #elif defined(TCC_TARGET_816)
         error("816 not implemented");
 #else
@@ -723,25 +690,6 @@ static void build_got_entries(TCCState *s1)
                         reloc_type = R_ARM_GLOB_DAT;
                     else
                         reloc_type = R_ARM_JUMP_SLOT;
-                    put_got_entry(s1, reloc_type, sym->st_size, sym->st_info, 
-                                  sym_index);
-                }
-                break;
-#elif defined(TCC_TARGET_C67)
-	    case R_C60_GOT32:
-            case R_C60_GOTOFF:
-            case R_C60_GOTPC:
-            case R_C60_PLT32:
-                if (!s1->got)
-                    build_got(s1);
-                if (type == R_C60_GOT32 || type == R_C60_PLT32) {
-                    sym_index = ELF32_R_SYM(rel->r_info);
-                    sym = &((Elf32_Sym *)symtab_section->data)[sym_index];
-                    /* look at the symbol got offset. If none, then add one */
-                    if (type == R_C60_GOT32)
-                        reloc_type = R_C60_GLOB_DAT;
-                    else
-                        reloc_type = R_C60_JMP_SLOT;
                     put_got_entry(s1, reloc_type, sym->st_size, sym->st_info, 
                                   sym_index);
                 }
@@ -1641,14 +1589,6 @@ int tcc_output_file(TCCState *s1, const char *filename)
                         put32(p + 2, get32(p + 2) + s1->got->sh_addr);
                         p += 16;
                     }
-#elif defined(TCC_TARGET_ARM)
-		    int x;
-		    x=s1->got->sh_addr - s1->plt->sh_addr - 12;
-		    p +=16;
-		    while (p < p_end) {
-		        put32(p + 12, x + get32(p + 12) + s1->plt->data - p);
-			p += 16;
-		    }
 #elif defined(TCC_TARGET_C67) || defined(TCC_TARGET_816)
                     /* XXX: TODO */
 #else
