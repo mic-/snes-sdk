@@ -20,6 +20,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <string>
 #include <vector>
 
 #define LDOUBLE_SIZE 12 // not actually supported
@@ -114,6 +115,7 @@ struct labels_816 {
   int pos;
 };
 std::vector<labels_816> label;
+
 
 char* get_sym_str(Sym* sym)
 {
@@ -1289,9 +1291,8 @@ void gfunc_prolog(CType* func_type)
   loc = 0; // huh squared?
 }
 
-char locals[1000][80];
-int localnos[1000];
-int localno=0;
+std::vector<std::string> locals;
+std::vector<int> localnos;
 
 void gfunc_epilog(void)
 {
@@ -1308,8 +1309,7 @@ void gfunc_epilog(void)
      for unknown reasons (wla-dx complains about unresolved symbols)
      putting them before the reference works, but this has to be done by the
      output code, so we have to save the various locals sizes somewhere */
-  strcpy(locals[localno], current_fn);
-  localnos[localno] = -loc;
-  localno++;
+  locals.push_back(current_fn);
+  localnos.push_back(-loc);
   current_fn[0] = 0;
 }

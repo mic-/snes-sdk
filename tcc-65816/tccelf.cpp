@@ -904,7 +904,7 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
     /* local variable size constants; used to be generated as part of the
        function epilog, but WLA DX barfed once in a while about missing
        symbols. putting them at the start of the file works around that. */
-    for(i=0; i<localno; i++) {
+    for(i = 0; i < locals.size(); ++i) {
       fprintf(f, ".define __%s_locals %d\n", locals[i], localnos[i]);
     }
     
