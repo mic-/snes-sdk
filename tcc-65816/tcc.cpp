@@ -67,8 +67,6 @@
 /* include file debug */
 //#define INC_DEBUG
 
-//#define MEM_DEBUG
-
 /* assembler debug */
 //#define ASM_DEBUG
 
@@ -974,17 +972,8 @@ static int strstart(const char *str, const char *val, const char **ptr)
     return 1;
 }
 
-/* memory management */
-#ifdef MEM_DEBUG
-int mem_cur_size;
-int mem_max_size;
-#endif
-
 static inline void tcc_free(void *ptr)
 {
-#ifdef MEM_DEBUG
-    mem_cur_size -= malloc_usable_size(ptr);
-#endif
     free(ptr);
 }
 
@@ -994,11 +983,6 @@ static void *tcc_malloc(unsigned long size)
     ptr = malloc(size);
     if (!ptr && size)
         error("memory full");
-#ifdef MEM_DEBUG
-    mem_cur_size += malloc_usable_size(ptr);
-    if (mem_cur_size > mem_max_size)
-        mem_max_size = mem_cur_size;
-#endif
     return ptr;
 }
 
@@ -1013,16 +997,7 @@ static void *tcc_mallocz(unsigned long size)
 static inline void *tcc_realloc(void *ptr, unsigned long size)
 {
     void *ptr1;
-#ifdef MEM_DEBUG
-    mem_cur_size -= malloc_usable_size(ptr);
-#endif
     ptr1 = realloc(ptr, size);
-#ifdef MEM_DEBUG
-    /* NOTE: count not correct if alloc error, but not critical */
-    mem_cur_size += malloc_usable_size(ptr1);
-    if (mem_cur_size > mem_max_size)
-        mem_max_size = mem_cur_size;
-#endif
     return ptr1;
 }
 
@@ -10526,11 +10501,6 @@ int main(int argc, char **argv)
     if (!do_bounds_check)
         tcc_delete(s);
 
-#ifdef MEM_DEBUG
-    if (do_bench) {
-        printf("memory: %d bytes, max = %d bytes\n", mem_cur_size, mem_max_size);
-    }
-#endif
     return ret;
 }
 
