@@ -903,7 +903,7 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
        function epilog, but WLA DX barfed once in a while about missing
        symbols. putting them at the start of the file works around that. */
     for(i = 0; i < locals.size(); ++i) {
-      fprintf(f, ".define __%s_locals %d\n", locals[i], localnos[i]);
+      fprintf(f, ".define __%s_locals %d\n", locals[i].c_str(), localnos[i]);
     }
     
     /* relocate sections
