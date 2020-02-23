@@ -127,7 +127,6 @@ typedef struct CString {
 typedef struct CType {
     int t;
     struct Sym *ref;
-    int extra;
 } CType;
 
 /* constant value */

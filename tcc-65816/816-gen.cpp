@@ -232,7 +232,7 @@ void load(int r, SValue* sv)
   int v,sign,t;
   SValue v1;
   pr("; load %d\n",r);
-  pr("; type %d reg 0x%x extra 0x%x\n",sv->type.t,sv->r,sv->type.extra);
+  pr("; type %d reg 0x%x\n",sv->type.t,sv->r);
   fr = sv->r;
   ft = sv->type.t;
   fc = sv->c.ul;
