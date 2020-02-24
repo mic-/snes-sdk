@@ -435,16 +435,12 @@ struct TCCState {
     BufferedFile **include_stack_ptr;
     int *ifdef_stack_ptr;
 
-    /* include file handling */
-    char **include_paths;
-    int nb_include_paths;
-    char **sysinclude_paths;
-    int nb_sysinclude_paths;
     CachedInclude **cached_includes;
     int nb_cached_includes;
 
-    char **library_paths;
-    int nb_library_paths;
+    std::vector<std::string> include_paths;
+    std::vector<std::string> sysinclude_paths;
+    std::vector<std::string> library_paths;
 
     /* array of all loaded dlls (including those referenced by loaded
        dlls) */
@@ -997,14 +993,6 @@ static inline void *tcc_realloc(void *ptr, unsigned long size)
     void *ptr1;
     ptr1 = realloc(ptr, size);
     return ptr1;
-}
-
-static char *tcc_strdup(const char *str)
-{
-    char *ptr;
-    ptr = (char*) tcc_malloc(strlen(str) + 1);
-    strcpy(ptr, str);
-    return ptr;
 }
 
 #define free(p) use_tcc_free(p)
@@ -2800,13 +2788,13 @@ static void preprocess(int is_bof)
             if (s1->include_stack_ptr >= s1->include_stack + INCLUDE_STACK_SIZE)
                 error("#include recursion too deep");
             /* now search in all the include paths */
-            n = s1->nb_include_paths + s1->nb_sysinclude_paths;
+            n = s1->include_paths.size() + s1->sysinclude_paths.size();
             for(i = 0; i < n; i++) {
                 const char *path;
-                if (i < s1->nb_include_paths)
-                    path = s1->include_paths[i];
+                if (i < s1->include_paths.size())
+                    path = s1->include_paths[i].c_str();
                 else
-                    path = s1->sysinclude_paths[i - s1->nb_include_paths];
+                    path = s1->sysinclude_paths[i - s1->include_paths.size()].c_str();
                 pstrcpy(buf1, sizeof(buf1), path);
                 pstrcat(buf1, sizeof(buf1), "/");
                 pstrcat(buf1, sizeof(buf1), buf);
@@ -9681,42 +9669,23 @@ void tcc_delete(TCCState *s1)
         tcc_free(s1->loaded_dlls[i]);
     tcc_free(s1->loaded_dlls);
 
-    /* library paths */
-    for(i = 0; i < s1->nb_library_paths; i++)
-        tcc_free(s1->library_paths[i]);
-    tcc_free(s1->library_paths);
-
     /* cached includes */
     for(i = 0; i < s1->nb_cached_includes; i++)
         tcc_free(s1->cached_includes[i]);
     tcc_free(s1->cached_includes);
-
-    for(i = 0; i < s1->nb_include_paths; i++)
-        tcc_free(s1->include_paths[i]);
-    tcc_free(s1->include_paths);
-
-    for(i = 0; i < s1->nb_sysinclude_paths; i++)
-        tcc_free(s1->sysinclude_paths[i]);
-    tcc_free(s1->sysinclude_paths);
 
     tcc_free(s1);
 }
 
 int tcc_add_include_path(TCCState *s1, const char *pathname)
 {
-    char *pathname1;
-    
-    pathname1 = tcc_strdup(pathname);
-    dynarray_add((void ***)&s1->include_paths, &s1->nb_include_paths, pathname1);
+    s1->include_paths.push_back(pathname);
     return 0;
 }
 
 int tcc_add_sysinclude_path(TCCState *s1, const char *pathname)
 {
-    char *pathname1;
-    
-    pathname1 = tcc_strdup(pathname);
-    dynarray_add((void ***)&s1->sysinclude_paths, &s1->nb_sysinclude_paths, pathname1);
+    s1->sysinclude_paths.push_back(pathname);
     return 0;
 }
 
@@ -9771,10 +9740,7 @@ int tcc_add_file(TCCState *s, const char *filename)
 
 int tcc_add_library_path(TCCState *s, const char *pathname)
 {
-    char *pathname1;
-    
-    pathname1 = tcc_strdup(pathname);
-    dynarray_add((void ***)&s->library_paths, &s->nb_library_paths, pathname1);
+    s->library_paths.push_back(pathname);
     return 0;
 }
 
@@ -9785,9 +9751,8 @@ static int tcc_add_dll(TCCState *s, const char *filename, int flags)
     char buf[1024];
     int i;
 
-    for(i = 0; i < s->nb_library_paths; i++) {
-        snprintf(buf, sizeof(buf), "%s/%s", 
-                 s->library_paths[i], filename);
+    for(const auto& libpath : s->library_paths) {
+        snprintf(buf, sizeof(buf), "%s/%s", libpath.c_str(), filename);
         if (tcc_add_file_internal(s, buf, flags) == 0)
             return 0;
     }
@@ -9812,9 +9777,8 @@ int tcc_add_library(TCCState *s, const char *libraryname)
     }
 
     /* then we look for the static library */
-    for(i = 0; i < s->nb_library_paths; i++) {
-        snprintf(buf, sizeof(buf), "%s/lib%s.a", 
-                 s->library_paths[i], libraryname);
+    for(const auto& libpath : s->library_paths) {
+        snprintf(buf, sizeof(buf), "%s/lib%s.a", libpath.c_str(), libraryname);
         if (tcc_add_file_internal(s, buf, 0) == 0)
             return 0;
     }
