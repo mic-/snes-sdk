@@ -173,8 +173,7 @@ typedef struct Sym {
 
 typedef struct Section {
     unsigned long data_offset; /* current data offset */
-    unsigned char *data;       /* section data */
-    unsigned long data_allocated; /* used for realloc() handling */
+    std::vector<uint8_t> data; /* section data */
     int sh_name;             /* elf section name (only used during output) */
     int sh_num;              /* elf section number */
     int sh_type;             /* elf section type */
@@ -188,8 +187,8 @@ typedef struct Section {
     int nb_hashed_syms;      /* used to resize the hash table */
     struct Section *link;    /* link to another section */
     struct Section *reloc;   /* corresponding section for relocation, if any */
-    struct Section *hash;     /* hash table for symbols */
-    char name[1];           /* section name */
+    struct Section *hash;    /* hash table for symbols */
+    std::string name;        /* section name */
 } Section;
 
 typedef struct DLLReference {
@@ -402,8 +401,8 @@ struct TCCState {
     {
         Section *sec;
 
-        sec = (Section*) tcc_mallocz(sizeof(Section) + name.length());
-        strcpy(sec->name, name.c_str());
+        sec = new Section{};
+        sec->name = name;
         sec->sh_type = sh_type;
         sec->sh_flags = sh_flags;
         switch(sh_type) {
@@ -1058,27 +1057,15 @@ static inline void sym_free(Sym *sym)
 
 static void free_section(Section *s)
 {
-    tcc_free(s->data);
-    tcc_free(s);
+    delete s;
 }
 
 /* realloc section and set its content to zero */
 static void section_realloc(Section *sec, unsigned long new_size)
 {
-    unsigned long size;
-    unsigned char *data;
-    
-    size = sec->data_allocated;
-    if (size == 0)
-        size = 1;
-    while (size < new_size)
-        size = size * 2;
-    data = (unsigned char*) tcc_realloc(sec->data, size);
-    if (!data)
-        error("memory full");
-    memset(data + sec->data_allocated, 0, size - sec->data_allocated);
-    sec->data = data;
-    sec->data_allocated = size;
+    if (new_size > sec->data.size()) {
+      sec->data.resize(new_size);
+    }
 }
 
 /* reserve at least 'size' bytes in section 'sec' from
@@ -1089,10 +1076,10 @@ static void *section_ptr_add(Section *sec, unsigned long size)
 
     offset = sec->data_offset;
     offset1 = offset + size;
-    if (offset1 > sec->data_allocated)
+    if (offset1 > sec->data.size())
         section_realloc(sec, offset1);
     sec->data_offset = offset1;
-    return sec->data + offset;
+    return sec->data.data() + offset;
 }
 
 #define SECTION_ABS ((void *)1)
@@ -1161,7 +1148,7 @@ static void put_extern_sym2(Sym *sym, Section *section,
         info = ELF32_ST_INFO(sym_bind, sym_type);
         sym->c = add_elf_sym(symtab_section, value, size, info, 0, sh_num, name);
     } else {
-        esym = &((Elf32_Sym *)symtab_section->data)[sym->c];
+        esym = &((Elf32_Sym *)symtab_section->data.data())[sym->c];
         esym->st_value = value;
         esym->st_size = size;
         esym->st_shndx = sh_num;
@@ -8454,9 +8441,9 @@ static void decl_designator(CType *type, Section *sec, unsigned long c,
         if (!sec)
             error("range init not supported yet for dynamic storage");
         c_end = c + nb_elems * elem_size;
-        if (c_end > sec->data_allocated)
+        if (c_end > sec->data.size())
             section_realloc(sec, c_end);
-        src = sec->data + c;
+        src = sec->data.data() + c;
         dst = src;
         for(i = 1; i < nb_elems; i++) {
             dst += elem_size;
@@ -8505,7 +8492,7 @@ static void init_putv(CType *type, Section *sec, unsigned long c,
         /* XXX: generate error if incorrect relocation */
         gen_assign_cast(&dtype);
         bt = type->t & VT_BTYPE;
-        ptr = sec->data + c;
+        ptr = sec->data.data() + c;
         /* XXX: make code faster ? */
         if (!(type->t & VT_BITFIELD)) {
             bit_pos = 0;
@@ -8641,9 +8628,7 @@ static void decl_initializer(CType *type, Section *sec, unsigned long c,
                        string in global variable, we handle it
                        specifically */
                     if (sec && tok == TOK_STR && size1 == 1) {
-                        //fprintf(stderr,"c %d array_length %d\n", c, array_length);
-                        //section_realloc(sec, c + array_length + nb);
-                        memcpy(sec->data + c + array_length, cstr->data, nb);
+                        memcpy(sec->data.data() + c + array_length, cstr->data, nb);
                     } else {
                         for(i=0;i<nb;i++) {
                             if (tok == TOK_STR)
@@ -8953,7 +8938,7 @@ static void decl_initializer_alloc(CType *type, AttributeDef *ad, int r,
             sec->data_offset = data_offset;
             /* allocate section space to put the data */
             if (sec->sh_type != SHT_NOBITS && 
-                data_offset > sec->data_allocated)
+                data_offset > sec->data.size())
                 section_realloc(sec, data_offset);
             /* align section if needed */
             if (align > sec->sh_addralign)
@@ -8978,7 +8963,7 @@ static void decl_initializer_alloc(CType *type, AttributeDef *ad, int r,
                 /* put a common area */
                 put_extern_sym(sym, NULL, align, size);
                 /* XXX: find a nicer way */
-                esym = &((Elf32_Sym *)symtab_section->data)[sym->c];
+                esym = &((Elf32_Sym *)symtab_section->data.data())[sym->c];
                 esym->st_shndx = SHN_COMMON;
             }
         } else {
@@ -9100,7 +9085,7 @@ static void gen_function(Sym *sym)
     sym_pop(&local_stack, NULL); /* reset local stack */
     /* end of function */
     /* patch symbol size */
-    ((Elf32_Sym *)symtab_section->data)[sym->c].st_size = 
+    ((Elf32_Sym *)symtab_section->data.data())[sym->c].st_size = 
         ind - func_ind;
     if (do_debug) {
         put_stabn(N_FUN, 0, 0, ind - func_ind);
@@ -9530,7 +9515,7 @@ TCCState *tcc_new(void)
     TokenSym *ts;
     int i, c;
 
-    s = (TCCState*) tcc_mallocz(sizeof(TCCState));
+    s = new TCCState{};
     if (!s)
         return NULL;
     tcc_state = s;
@@ -9639,7 +9624,7 @@ TCCState *tcc_new(void)
     return s;
 }
 
-void tcc_delete(TCCState *s1)
+void tcc_delete(TCCState *state)
 {
     int i, n;
 
@@ -9656,25 +9641,25 @@ void tcc_delete(TCCState *s1)
 
     free_section(symtab_section->hash);
 
-    free_section(s1->dynsymtab_section->hash);
-    free_section(s1->dynsymtab_section->link);
-    free_section(s1->dynsymtab_section);
+    free_section(state->dynsymtab_section->hash);
+    free_section(state->dynsymtab_section->link);
+    free_section(state->dynsymtab_section);
 
-    for(i = 1; i < s1->nb_sections; i++)
-        free_section(s1->sections[i]);
-    tcc_free(s1->sections);
+    for(i = 1; i <state->nb_sections; i++)
+        free_section(state->sections[i]);
+    tcc_free(state->sections);
     
     /* free loaded dlls array */
-    for(i = 0; i < s1->nb_loaded_dlls; i++)
-        tcc_free(s1->loaded_dlls[i]);
-    tcc_free(s1->loaded_dlls);
+    for(i = 0; i < state->nb_loaded_dlls; i++)
+        tcc_free(state->loaded_dlls[i]);
+    tcc_free(state->loaded_dlls);
 
     /* cached includes */
-    for(i = 0; i < s1->nb_cached_includes; i++)
-        tcc_free(s1->cached_includes[i]);
-    tcc_free(s1->cached_includes);
+    for(i = 0; i < state->nb_cached_includes; i++)
+        tcc_free(state->cached_includes[i]);
+    tcc_free(state->cached_includes);
 
-    tcc_free(s1);
+    delete state;
 }
 
 int tcc_add_include_path(TCCState *s1, const char *pathname)

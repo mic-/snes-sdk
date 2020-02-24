@@ -153,7 +153,7 @@ void g(int c)
 {
     int ind1;
     ind1 = ind + 1;
-    if (ind1 > cur_text_section->data_allocated)
+    if (ind1 > cur_text_section->data.size())
         section_realloc(cur_text_section, ind1);
     cur_text_section->data[ind] = c;
     ind = ind1;
