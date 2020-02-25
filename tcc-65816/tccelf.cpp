@@ -191,7 +191,7 @@ void *tcc_get_symbol_err(TCCState *s, const char *name)
 /* add an elf symbol : check if it is already defined and patch
    it. Return symbol index. NOTE that sh_num can be SHN_UNDEF. */
 static int add_elf_sym(Section *s, unsigned long value, unsigned long size,
-                       int info, int other, int sh_num, const char *name)
+                       int info, int other, int sh_num, const std::string& name)
 {
     Elf32_Sym *esym;
     int sym_bind, sym_index, sym_type, esym_bind;
@@ -201,7 +201,7 @@ static int add_elf_sym(Section *s, unsigned long value, unsigned long size,
         
     if (sym_bind != STB_LOCAL) {
         /* we search global or weak symbols */
-        sym_index = find_elf_sym(s, name);
+        sym_index = find_elf_sym(s, name.c_str());
         if (!sym_index)
             goto do_def;
         esym = &((Elf32_Sym *)s->data.data())[sym_index];
@@ -222,7 +222,7 @@ static int add_elf_sym(Section *s, unsigned long value, unsigned long size,
 #endif
                 /* NOTE: we accept that two DLL define the same symbol */
                 if (s != tcc_state->dynsymtab_section)
-                    error_noabort("'%s' defined twice", name);
+                    error_noabort("'%s' defined twice", name.c_str());
             }
         } else {
         do_patch:
@@ -236,7 +236,7 @@ static int add_elf_sym(Section *s, unsigned long value, unsigned long size,
     do_def:
         sym_index = put_elf_sym(s, value, size, 
                                 ELF32_ST_INFO(sym_bind, sym_type), other, 
-                                sh_num, name);
+                                sh_num, name.c_str());
     }
     return sym_index;
 }
@@ -753,11 +753,11 @@ static void add_init_array_defines(TCCState *s1, const char *section_name)
     add_elf_sym(symtab_section, 
                 0, 0,
                 ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
-                s->sh_num, sym_start.c_str());
+                s->sh_num, sym_start);
     add_elf_sym(symtab_section, 
                 end_offset, 0,
                 ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
-                s->sh_num, sym_end.c_str());
+                s->sh_num, sym_end);
 }
 
 /* add tcc runtime libraries */
@@ -778,7 +778,7 @@ static void tcc_add_runtime(TCCState *s1)
                     bounds_section->sh_num, "__bounds_start");
         /* add bound check code */
         const auto bcheck_name = string_format("%s/%s", tcc_lib_path, "bcheck.o");
-        tcc_add_file(s1, bcheck_name.c_str());
+        tcc_add_file(s1, bcheck_name);
 #ifdef TCC_TARGET_I386
         if (s1->output_type != TCC_OUTPUT_MEMORY) {
             /* add 'call __bound_init()' in .init section */
@@ -798,7 +798,7 @@ static void tcc_add_runtime(TCCState *s1)
         tcc_add_library(s1, "c");
 
         const auto libtcc1_name = string_format("%s/%s", tcc_lib_path, "libtcc1.a");
-        tcc_add_file(s1, libtcc1_name.c_str());
+        tcc_add_file(s1, libtcc1_name);
     }
     /* add crt end if not memory output */
     if (s1->output_type != TCC_OUTPUT_MEMORY && !s1->nostdlib) {
@@ -811,7 +811,6 @@ static void tcc_add_runtime(TCCState *s1)
    symbols)) */
 static void tcc_add_linker_symbols(TCCState *s1)
 {
-    char buf[1024];
     int i;
     Section *s;
 
@@ -851,16 +850,16 @@ static void tcc_add_linker_symbols(TCCState *s1)
                     goto next_sec;
                 p++;
             }
-            snprintf(buf, sizeof(buf), "__start_%s", s->name.c_str());
+            const auto start_sym_name = string_format("__start_%s", s->name.c_str());
             add_elf_sym(symtab_section, 
                         0, 0,
                         ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
-                        s->sh_num, buf);
-            snprintf(buf, sizeof(buf), "__stop_%s", s->name.c_str());
+                        s->sh_num, start_sym_name);
+            const auto stop_sym_name = string_format("__stop_%s", s->name.c_str());
             add_elf_sym(symtab_section,
                         s->data_offset, 0,
                         ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
-                        s->sh_num, buf);
+                        s->sh_num, stop_sym_name);
         }
     next_sec: ;
     }

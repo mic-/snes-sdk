@@ -853,7 +853,7 @@ static int put_elf_sym(Section *s,
                        unsigned long value, unsigned long size,
                        int info, int other, int shndx, const char *name);
 static int add_elf_sym(Section *s, unsigned long value, unsigned long size,
-                       int info, int other, int sh_num, const char *name);
+                       int info, int other, int sh_num, const std::string& name);
 static void put_elf_reloc(Section *symtab, Section *s, unsigned long offset,
                           int type, int symbol);
 static void put_stabs(const char *str, int type, int other, int desc, 
@@ -862,11 +862,11 @@ static void put_stabs_r(const char *str, int type, int other, int desc,
                         unsigned long value, Section *sec, int sym_index);
 static void put_stabn(int type, int other, int desc, int value);
 static void put_stabd(int type, int other, int desc);
-static int tcc_add_dll(TCCState *s, const char *filename, int flags);
+static int tcc_add_dll(TCCState *s, const std::string& filename, int flags);
 
 #define AFF_PRINT_ERROR     0x0001 /* print error if file not found */
 #define AFF_REFERENCED_DLL  0x0002 /* load a referenced dll from another dll */
-static int tcc_add_file_internal(TCCState *s, const char *filename, int flags);
+static int tcc_add_file_internal(TCCState *s, const std::string& filename, int flags);
 
 /* tccasm.c */
 
@@ -9012,13 +9012,10 @@ static void decl_initializer_alloc(CType *type, AttributeDef *ad, int r,
 
 void put_func_debug(Sym *sym)
 {
-    char buf[512];
-
     /* stabs info */
     /* XXX: we put here a dummy type */
-    snprintf(buf, sizeof(buf), "%s:%c1", 
-             funcname, sym->type.t & VT_STATIC ? 'f' : 'F');
-    put_stabs_r(buf, N_FUN, 0, file->line_num, 0,
+    const auto str = string_format("%s:%c1", funcname, (sym->type.t & VT_STATIC) ? 'f' : 'F');
+    put_stabs_r(str.c_str(), N_FUN, 0, file->line_num, 0,
                 cur_text_section, sym->c);
     last_ind = 0;
     last_line_num = 0;
@@ -9594,9 +9591,8 @@ TCCState *tcc_new(void)
     /* default library paths */
 #ifdef TCC_TARGET_PE
     {
-        char buf[1024];
-        snprintf(buf, sizeof(buf), "%s/lib", tcc_lib_path);
-        tcc_add_library_path(s, buf);
+        const auto full_lib_path = std::string(tcc_lib_path) + "/lib";
+        tcc_add_library_path(s, full_lib_path.c_str());
     }
 #else
     tcc_add_library_path(s, "/usr/local/lib");
@@ -9685,28 +9681,24 @@ int tcc_add_sysinclude_path(TCCState *s1, const char *pathname)
     return 0;
 }
 
-static int tcc_add_file_internal(TCCState *s1, const char *filename, int flags)
+static int tcc_add_file_internal(TCCState *s1, const std::string& filename, int flags)
 {
-    const char *ext, *filename1;
     int ret;
     BufferedFile *saved_file;
 
     /* find source file type with extension */
-    filename1 = strrchr(filename, '/');
-    if (filename1)
-        filename1++;
-    else
-        filename1 = filename;
-    ext = strrchr(filename1, '.');
-    if (ext)
-        ext++;
+    const char *ext = nullptr;
+    const auto last_slash_pos = filename.rfind('/');
+    const auto last_dot_pos = filename.rfind('.');
+    if (last_dot_pos != std::string::npos && (last_slash_pos == std::string::npos || last_slash_pos < last_dot_pos))
+        ext = filename.c_str() + last_dot_pos + 1;
 
     /* open the file */
     saved_file = file;
-    file = tcc_open(s1, filename);
+    file = tcc_open(s1, filename.c_str());
     if (!file) {
         if (flags & AFF_PRINT_ERROR) {
-            error_noabort("file '%s' not found", filename);
+            error_noabort("file '%s' not found", filename.c_str());
         }
         ret = -1;
         goto fail1;
@@ -9729,53 +9721,51 @@ static int tcc_add_file_internal(TCCState *s1, const char *filename, int flags)
     goto the_end;
 }
 
-int tcc_add_file(TCCState *s, const char *filename)
+int tcc_add_file(TCCState *state, const std::string& filename)
 {
-    return tcc_add_file_internal(s, filename, AFF_PRINT_ERROR);
+    return tcc_add_file_internal(state, filename, AFF_PRINT_ERROR);
 }
 
-int tcc_add_library_path(TCCState *s, const char *pathname)
+int tcc_add_library_path(TCCState *state, const char *pathname)
 {
-    s->library_paths.push_back(pathname);
+    state->library_paths.push_back(pathname);
     return 0;
 }
 
 /* find and load a dll. Return non zero if not found */
 /* XXX: add '-rpath' option support ? */
-static int tcc_add_dll(TCCState *s, const char *filename, int flags)
+static int tcc_add_dll(TCCState *state, const std::string& filename, int flags)
 {
-    char buf[1024];
     int i;
 
-    for(const auto& libpath : s->library_paths) {
-        snprintf(buf, sizeof(buf), "%s/%s", libpath.c_str(), filename);
-        if (tcc_add_file_internal(s, buf, flags) == 0)
+    for(const auto& libpath : state->library_paths) {
+        const auto path_and_name = libpath + '/' + filename;
+        if (tcc_add_file_internal(state, path_and_name, flags) == 0)
             return 0;
     }
     return -1;
 }
 
 /* the library name is the same as the argument of the '-l' option */
-int tcc_add_library(TCCState *s, const char *libraryname)
+int tcc_add_library(TCCState *state, const std::string& libraryname)
 {
-    char buf[1024];
     int i;
     
     /* first we look for the dynamic library if not static linking */
-    if (!s->static_link) {
+    if (!state->static_link) {
 #ifdef TCC_TARGET_PE
-        snprintf(buf, sizeof(buf), "%s.def", libraryname);
+        const auto dynlibname = libraryname + ".def";
 #else
-        snprintf(buf, sizeof(buf), "lib%s.so", libraryname);
+        const auto dynlibname = std::string("lib") + libraryname + ".so";
 #endif
-        if (tcc_add_dll(s, buf, 0) == 0)
+        if (tcc_add_dll(state, dynlibname, 0) == 0)
             return 0;
     }
 
     /* then we look for the static library */
-    for(const auto& libpath : s->library_paths) {
-        snprintf(buf, sizeof(buf), "%s/lib%s.a", libpath.c_str(), libraryname);
-        if (tcc_add_file_internal(s, buf, 0) == 0)
+    for(const auto& libpath : state->library_paths) {
+        const auto path_and_name = libpath + "/lib" + libraryname + ".a";
+        if (tcc_add_file_internal(state, path_and_name, 0) == 0)
             return 0;
     }
     return -1;

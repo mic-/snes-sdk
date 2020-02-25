@@ -45,7 +45,7 @@ void tcc_undefine_symbol(TCCState *s, const char *sym);
 
 /* add a file (either a C file, dll, an object, a library or an ld
    script). Return -1 if error. */
-int tcc_add_file(TCCState *s, const char *filename);
+int tcc_add_file(TCCState *s, const std::string& filename);
 
 /* compile a string containing a C source. Return non zero if
    error. */
@@ -70,7 +70,7 @@ int tcc_set_output_type(TCCState *s, int output_type);
 int tcc_add_library_path(TCCState *s, const char *pathname);
 
 /* the library name is the same as the argument of the '-l' option */
-int tcc_add_library(TCCState *s, const char *libraryname);
+int tcc_add_library(TCCState *s, const std::string& libraryname);
 
 /* add a symbol to the compiled program */
 int tcc_add_symbol(TCCState *s, const char *name, unsigned long val);

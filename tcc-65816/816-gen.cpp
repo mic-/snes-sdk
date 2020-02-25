@@ -1086,7 +1086,6 @@ void float_to_woz(float, unsigned char*);
 
 void gen_opf(int op)
 {
-//  error("gen_opf 0x%x ('%c')\n",op,op);
   int r, fr, ft;
   float fcf;
   int length, align;
