@@ -245,17 +245,16 @@ static int add_elf_sym(Section *s, unsigned long value, unsigned long size,
 static void put_elf_reloc(Section *symtab, Section *s, unsigned long offset,
                           int type, int symbol)
 {
-    char buf[256];
     Section *sr;
     Elf32_Rel *rel;
 
     sr = s->reloc;
     if (!sr) {
         /* if no relocation section, create it */
-        snprintf(buf, sizeof(buf), ".rel%s", s->name.c_str());
+        const auto name = string_format(".rel%s", s->name.c_str());
         /* if the symtab is allocated, then we consider the relocation
            are also */
-        sr = tcc_state->new_section(buf, SHT_REL, symtab->sh_flags);
+        sr = tcc_state->new_section(name, SHT_REL, symtab->sh_flags);
         sr->sh_entsize = sizeof(Elf32_Rel);
         sr->link = symtab;
         sr->sh_info = s->sh_num;
@@ -739,11 +738,9 @@ static void add_init_array_defines(TCCState *s1, const char *section_name)
 {
     Section *s;
     long end_offset;
-    char sym_start[1024];
-    char sym_end[1024];
     
-    snprintf(sym_start, sizeof(sym_start), "__%s_start", section_name + 1);
-    snprintf(sym_end, sizeof(sym_end), "__%s_end", section_name + 1);
+    const auto sym_start = string_format("__%s_start", section_name + 1);
+    const auto sym_end = string_format("__%s_end", section_name + 1);
 
     s = s1->find_section(section_name);
     if (!s) {
@@ -756,18 +753,16 @@ static void add_init_array_defines(TCCState *s1, const char *section_name)
     add_elf_sym(symtab_section, 
                 0, 0,
                 ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
-                s->sh_num, sym_start);
+                s->sh_num, sym_start.c_str());
     add_elf_sym(symtab_section, 
                 end_offset, 0,
                 ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
-                s->sh_num, sym_end);
+                s->sh_num, sym_end.c_str());
 }
 
 /* add tcc runtime libraries */
 static void tcc_add_runtime(TCCState *s1)
 {
-    char buf[1024];
-
 #ifdef CONFIG_TCC_BCHECK
     if (do_bounds_check) {
         unsigned long *ptr;
@@ -782,8 +777,8 @@ static void tcc_add_runtime(TCCState *s1)
                     ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
                     bounds_section->sh_num, "__bounds_start");
         /* add bound check code */
-        snprintf(buf, sizeof(buf), "%s/%s", tcc_lib_path, "bcheck.o");
-        tcc_add_file(s1, buf);
+        const auto bcheck_name = string_format("%s/%s", tcc_lib_path, "bcheck.o");
+        tcc_add_file(s1, bcheck_name.c_str());
 #ifdef TCC_TARGET_I386
         if (s1->output_type != TCC_OUTPUT_MEMORY) {
             /* add 'call __bound_init()' in .init section */
@@ -802,8 +797,8 @@ static void tcc_add_runtime(TCCState *s1)
     if (!s1->nostdlib) {
         tcc_add_library(s1, "c");
 
-        snprintf(buf, sizeof(buf), "%s/%s", tcc_lib_path, "libtcc1.a");
-        tcc_add_file(s1, buf);
+        const auto libtcc1_name = string_format("%s/%s", tcc_lib_path, "libtcc1.a");
+        tcc_add_file(s1, libtcc1_name.c_str());
     }
     /* add crt end if not memory output */
     if (s1->output_type != TCC_OUTPUT_MEMORY && !s1->nostdlib) {

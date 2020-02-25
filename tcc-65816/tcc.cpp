@@ -27,6 +27,7 @@
 
 #else
 
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -46,7 +47,6 @@
 #endif
 #ifndef WIN32
 #include <sys/time.h>
-//#include <sys/ucontext.h>
 #endif
 
 #endif /* !CONFIG_TCCBOOT */
@@ -103,6 +103,17 @@ typedef int BOOL;
 #define TOK_HASH_SIZE       8192 /* must be a power of two */
 #define TOK_ALLOC_INCR      512  /* must be a power of two */
 #define TOK_MAX_SIZE        4 /* token max size in int unit when stored in string */
+
+// Based on https://stackoverflow.com/a/26221725/1524450
+template<typename ... Args>
+std::string string_format(const char *format, Args ... args)
+{
+    size_t size = snprintf(nullptr, 0, format, args ...) + 1; // Extra space for '\0'
+    if (size <= 0) { throw std::runtime_error("Error during formatting."); }
+    std::vector<char> buf(size);
+    snprintf(buf.data(), size, format, args ...);
+    return std::string(buf.data(), buf.data() + size - 1); // We don't want the '\0' inside
+}
 
 /* token symbol management */
 typedef struct TokenSym {
