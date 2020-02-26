@@ -925,11 +925,11 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
             /* insert jump labels */
             if(next_jump_pos == j) {
               next_jump_pos = size;
-              for(k = 0; k < jumps; k++) {
+              for(k = 0; k < jumps.size(); k++) {
                 /* while we're here, look for the next jump target after this one */
-                if(jump[k][1] > j && jump[k][1] < next_jump_pos) next_jump_pos = jump[k][1];
+                if(jumps[k].to > j && jumps[k].to < next_jump_pos) next_jump_pos = jumps[k].to;
                 /* write the jump target label(s) for this position */
-                if(jump[k][1] == j) fprintf(f, LOCAL_LABEL ":\n", k);
+                if(jumps[k].to == j) fprintf(f, LOCAL_LABEL ":\n", k);
               }
             }
             fputc(s->data[j], f);

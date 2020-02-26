@@ -157,32 +157,35 @@ static void emit_code(const std::string& code)
 
 #define pr(x...) do { emit_code(string_format(x)); } while(0)
 
-int jump[1000][2];
-int jumps = 0;
+struct Jump {
+  int from;
+  int to;
+};
+
+std::vector<Jump> jumps;
 
 
-void gsym_addr(int t, int a)
+void gsym_addr(int from, int to)
 {
-  /* code at t wants to jump to a */
-  //fprintf(stderr, "gsymming t 0x%x a 0x%x\n", t, a);
-  pr("; gsym_addr t %d a %d ind %d\n",t,a,ind);
+  /* code at 'from' wants to jump to 'to' */
+  pr("; gsym_addr from %d to %d ind %d\n", from, to, ind);
   /* the label generation code sets this for us so we know when a symbol
      is a label and what its name is, so that we can remember its name
      and position so the output code can insert it correctly */
   if(label_workaround) {
-    label.push_back({.name = label_workaround, .pos = a});
+    label.push_back({.name = label_workaround, .pos = to});
     label_workaround = NULL;
   }
   int i;
   // pair up the jump with the target address
   // the tcc_output_... function will add a
-  // label __local_<i> at a when writing the output
-  int found = 0;
-  for(i = 0; i < jumps; i++) {
-    if(jump[i][0] == t) jump[i][1] = a;
-    found = 1;
+  // label __local_<i> at 'to' when writing the output
+  for(Jump& jump : jumps) {
+    if(jump.from == from) {
+      jump.to = to;
+    }
   }
-  if(!found) pr("; ERROR no jump found to patch\n");
+  if(jumps.empty()) pr("; ERROR no jump found to patch\n");
 }
 
 void gsym(int t)
@@ -676,16 +679,15 @@ uintptr_t gjmp(int t)
   int i;
   // remember this jump so we can insert a label before the destination later
   pr("; gjmp_addr %d at %d\n",t,ind);
-  pr("jmp.w " LOCAL_LABEL "\n",jumps);
+  pr("jmp.w " LOCAL_LABEL "\n", jumps.size());
   r = ind;
-  jump[jumps][0] = r;
-  for(i = 0; i < jumps; i++) {
-    if(jump[i][0] == t) {	// the jump target is a jump itself; make it go to same place as this one
-      jump[i][0] = r;
+  for(Jump& jump : jumps) {
+    if(jump.from == t) {	// the jump target is a jump itself; make it go to same place as this one
+      jump.from = r;
     }
   }
-  jumps++;
-  gsym_addr(r,t);
+  jumps.push_back({.from = r, .to = 0});
+  gsym_addr(r, t);
   return r;
 }
 
@@ -702,16 +704,15 @@ int gtst(int inv, int t)
   pr("; gtst inv %d t %d v %d r %d ind %d\n",inv,t,v,r,ind);
   if(v == VT_CMP) {
     pr("; cmp op 0x%x inv %d v %d r %d\n",vtop->c.i,inv,v,r);
-    //gsym(t);
     switch(vtop->c.i) {
     case TOK_NE:
       // remember that we need a label to jump to
-      jump[jumps][0] = r;
       pr("; cmp ne\n");
       // branches (too short) pr("b%s " LOCAL_LABEL "\n", inv?"eq":"ne", jumps++);
       pr("b%s +\n", inv?"ne":"eq");
       gsym(t);
-      pr("brl " LOCAL_LABEL "\n+\n", jumps++);
+      pr("brl " LOCAL_LABEL "\n+\n", jumps.size());
+      jumps.push_back({.from = r, .to = 0});
       break;
     default:
       error("unknown compare");

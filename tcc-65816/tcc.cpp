@@ -5291,9 +5291,9 @@ void gen_opl(int op)
 #elif defined(TCC_TARGET_816)
                 pr("; cmpll high order word equal?\n");
                 b = ind;
-                jump[jumps][0] = ind;
+                jumps.push_back({.from = ind, .to = 0});
                 // flags from the compare are long gone, but the compare opi has saved the value for us in y
-                pr("tya\nbne " LOCAL_LABEL "\n", jumps++);
+                pr("tya\nbne " LOCAL_LABEL "\n", jumps.size()-1);
 #else
 #error not supported
 #endif
