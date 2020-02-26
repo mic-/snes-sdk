@@ -10087,8 +10087,8 @@ static int expand_args(char ***pargv, const char *str)
     return argc;
 }
 
-static char **files;
-static int nb_files, nb_libraries;
+static std::vector<std::string> files;
+static int nb_libraries;
 static int multiple_files;
 static int print_search_dirs;
 static int output_type;
@@ -10107,7 +10107,7 @@ int parse_args(TCCState *s, int argc, char **argv)
     optind = 0;
     while (1) {
         if (optind >= argc) {
-            if (nb_files == 0 && !print_search_dirs)
+            if (files.empty() && !print_search_dirs)
                 goto show_help;
             else
                 break;
@@ -10115,7 +10115,7 @@ int parse_args(TCCState *s, int argc, char **argv)
         r = argv[optind++];
         if (r[0] != '-') {
             /* add a new file */
-            dynarray_add((void ***)&files, &nb_files, r);
+            files.push_back(r);
             if (!multiple_files) {
                 optind--;
                 /* argv[0] will be this file */
@@ -10186,7 +10186,7 @@ int parse_args(TCCState *s, int argc, char **argv)
                 tcc_lib_path = optarg;
                 break;
             case TCC_OPTION_l:
-                dynarray_add((void ***)&files, &nb_files, r);
+                files.push_back(r);
                 nb_libraries++;
                 break;
             case TCC_OPTION_bench:
@@ -10333,8 +10333,7 @@ int main(int argc, char **argv)
     output_type = TCC_OUTPUT_EXE;
     outfile = NULL;
     multiple_files = 1;
-    files = NULL;
-    nb_files = 0;
+    files.clear();
     nb_libraries = 0;
     reloc_output = 0;
     print_search_dirs = 0;
@@ -10347,7 +10346,7 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    nb_objfiles = nb_files - nb_libraries;
+    nb_objfiles = files.size() - nb_libraries;
 
     /* if outfile provided without other options, we output an
        executable */
@@ -10368,7 +10367,7 @@ int main(int argc, char **argv)
     /* compute default outfile name */
             pstrcpy(objfilename, sizeof(objfilename) - 1, 
                     /* strip path */
-                    tcc_basename(files[0]));
+                    tcc_basename(files[0].c_str()));
 #ifdef TCC_TARGET_PE
             pe_guess_outfile(objfilename, output_type);
 #else
@@ -10394,13 +10393,10 @@ int main(int argc, char **argv)
     tcc_set_output_type(s, output_type);
 
     /* compile or add each files or library */
-    for(i = 0;i < nb_files; i++) {
-        const char *filename;
-
-        filename = files[i];
+    for (const auto& filename : files) {
         if (filename[0] == '-') {
-            if (tcc_add_library(s, filename + 2) < 0)
-                error("cannot find %s", filename);
+            if (tcc_add_library(s, filename.c_str() + 2) < 0)
+                error("cannot find %s", filename.c_str());
         } else {
             if (tcc_add_file(s, filename) < 0) {
                 ret = 1;
@@ -10409,8 +10405,7 @@ int main(int argc, char **argv)
         }
     }
 
-    /* free all files */
-    tcc_free(files);
+    files.clear();
 
     if (do_bench) {
         double total_time;
