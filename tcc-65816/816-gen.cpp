@@ -148,24 +148,14 @@ char* get_sym_str(Sym* sym)
   return name;
 }
 
-/* XXX: make it faster ? */
-void g(int c)
+static void emit_code(const std::string& code)
 {
-    int ind1;
-    ind1 = ind + 1;
-    if (ind1 > cur_text_section->data.size())
-        section_realloc(cur_text_section, ind1);
-    cur_text_section->data[ind] = c;
-    ind = ind1;
+  cur_text_section->data.reserve(cur_text_section->data.size() + code.length());
+  cur_text_section->data.insert(cur_text_section->data.end(), code.cbegin(), code.cend());
+  ind += code.length();
 }
 
-void s(char* str)
-{
-  for(;*str;str++) g(*str);
-}
-
-char line[256];
-#define pr(x...) do { sprintf(line, x); s(line); } while(0)
+#define pr(x...) do { emit_code(string_format(x)); } while(0)
 
 int jump[1000][2];
 int jumps = 0;
