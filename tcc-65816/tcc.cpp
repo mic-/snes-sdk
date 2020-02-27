@@ -27,8 +27,11 @@
 
 #else
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <cstdlib>
@@ -114,6 +117,26 @@ std::string string_format(const char *format, Args ... args)
     snprintf(buf.data(), size, format, args ...);
     return std::string(buf.data(), buf.data() + size - 1); // We don't want the '\0' inside
 }
+
+inline void hash_combine(std::size_t& seed) { }
+
+// From https://stackoverflow.com/a/38140932/1524450
+template <typename T, typename... Rest>
+inline void hash_combine(std::size_t& seed, const T& v, Rest... rest) {
+    std::hash<T> hasher;
+    seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
+    hash_combine(seed, rest...);
+}
+
+// Based on https://stackoverflow.com/a/32685618/1524450
+struct pair_hash {
+    template <class T1, class T2>
+    std::size_t operator () (const std::pair<T1,T2> &p) const {
+        std::size_t h = 0;
+        hash_combine(h, p.first, p.second);
+        return h;
+    }
+};
 
 /* token symbol management */
 typedef struct TokenSym {
@@ -285,12 +308,10 @@ typedef struct TokenString {
    inclusion if the include file is protected by #ifndef ... #endif */
 typedef struct CachedInclude {
     int ifndef_macro;
-    int hash_next; /* -1 if none */
     char type; /* '"' or '>' to give include type */
-    char filename[1]; /* path specified in #include */
+    std::string filename; /* path specified in #include */
 } CachedInclude;
 
-#define CACHED_INCLUDES_HASH_SIZE 512
 
 /* parser */
 static struct BufferedFile *file;
@@ -445,8 +466,9 @@ struct TCCState {
     BufferedFile **include_stack_ptr;
     int *ifdef_stack_ptr;
 
-    CachedInclude **cached_includes;
-    int nb_cached_includes;
+    using CachedIncludeKey = std::pair<int, std::string>;
+    using CachedIncludeIterator = std::unordered_map<CachedIncludeKey, CachedInclude, pair_hash>::iterator;
+    std::unordered_map<CachedIncludeKey, CachedInclude, pair_hash> cached_includes;
 
     std::vector<std::string> include_paths;
     std::vector<std::string> sysinclude_paths;
@@ -521,9 +543,6 @@ struct TCCState {
 
     /* see ifdef_stack_ptr */
     int ifdef_stack[IFDEF_STACK_SIZE];
-
-    /* see cached_includes */
-    int cached_includes_hash[CACHED_INCLUDES_HASH_SIZE];
 
     /* pack stack */
     int pack_stack[PACK_STACK_SIZE];
@@ -835,8 +854,7 @@ void vnrott(int n);
 void lexpand_nr(void);
 static void vpush_global_sym(CType *type, int v);
 void vset(CType *type, int r, int v);
-void type_to_str(char *buf, int buf_size, 
-                 CType *type, const char *varstr);
+std::string type_to_str(CType *type, const char *varstr);
 char *get_tok_str(int v, CValue *cv);
 static Sym *get_sym_ref(CType *type, Section *sec, 
                         unsigned long offset, unsigned long size);
@@ -2570,63 +2588,29 @@ static void parse_define(void)
     define_push(v, t, str.str, first);
 }
 
-static inline int hash_cached_include(int type, const char *filename)
-{
-    const unsigned char *s;
-    unsigned int h;
 
-    h = TOK_HASH_INIT;
-    h = TOK_HASH_FUNC(h, type);
-    s = reinterpret_cast<const unsigned char*>(filename);
-    while (*s) {
-        h = TOK_HASH_FUNC(h, *s);
-        s++;
-    }
-    h &= (CACHED_INCLUDES_HASH_SIZE - 1);
-    return h;
-}
-
-/* XXX: use a token or a hash table to accelerate matching ? */
-static CachedInclude *search_cached_include(TCCState *s1,
-                                            int type, const char *filename)
+static TCCState::CachedIncludeIterator search_cached_include(TCCState *state, int type, const char *filename)
 {
-    CachedInclude *e;
-    int i, h;
-    h = hash_cached_include(type, filename);
-    i = s1->cached_includes_hash[h];
-    for(;;) {
-        if (i == 0)
-            break;
-        e = s1->cached_includes[i - 1];
-        if (e->type == type && !strcmp(e->filename, filename))
-            return e;
-        i = e->hash_next;
-    }
-    return NULL;
+    const auto key = TCCState::CachedIncludeKey(type, filename);
+    auto matches = state->cached_includes.equal_range(key);
+    return std::find_if(matches.first, matches.second, [type, filename] (const auto& elem) {
+         return elem.second.type == type && elem.second.filename == filename;
+    });
 }
 
 static inline void add_cached_include(TCCState *s1, int type, 
                                       const char *filename, int ifndef_macro)
 {
-    CachedInclude *e;
-    int h;
-
-    if (search_cached_include(s1, type, filename))
+    if (search_cached_include(s1, type, filename) != s1->cached_includes.end())
         return;
 #ifdef INC_DEBUG
     printf("adding cached '%s' %s\n", filename, get_tok_str(ifndef_macro, NULL));
 #endif
-    e = (CachedInclude*) tcc_malloc(sizeof(CachedInclude) + strlen(filename));
-    if (!e)
-        return;
-    e->type = type;
-    strcpy(e->filename, filename);
-    e->ifndef_macro = ifndef_macro;
-    dynarray_add((void ***)&s1->cached_includes, &s1->nb_cached_includes, e);
-    /* add in hash table */
-    h = hash_cached_include(type, filename);
-    e->hash_next = s1->cached_includes_hash[h];
-    s1->cached_includes_hash[h] = s1->nb_cached_includes;
+    CachedInclude cinc;
+    cinc.type = type;
+    cinc.filename = filename;
+    cinc.ifndef_macro = ifndef_macro;
+    s1->cached_includes[TCCState::CachedIncludeKey(type, filename)] = cinc;
 }
 
 static void pragma_parse(TCCState *s1)
@@ -2685,7 +2669,7 @@ static void preprocess(int is_bof)
     char buf1[1024];
     BufferedFile *f;
     Sym *s;
-    CachedInclude *e;
+    TCCState::CachedIncludeIterator cinc;
     
     saved_parse_flags = parse_flags;
     parse_flags = PARSE_FLAG_PREPROCESS | PARSE_FLAG_TOK_NUM | 
@@ -2756,8 +2740,8 @@ static void preprocess(int is_bof)
             }
         }
 
-        e = search_cached_include(s1, c, buf);
-        if (e && define_find(e->ifndef_macro)) {
+        cinc = search_cached_include(s1, c, buf);
+        if (cinc != s1->cached_includes.end() && define_find(cinc->second.ifndef_macro)) {
             /* no need to parse the include because the 'ifndef macro'
                is defined */
 #ifdef INC_DEBUG
@@ -6138,96 +6122,90 @@ static int is_compatible_types(CType *type1, CType *type2)
    printed in the type */
 /* XXX: union */
 /* XXX: add array and function pointers */
-void type_to_str(char *buf, int buf_size, 
-                 CType *type, const char *varstr)
+std::string type_to_str(CType *type, const char *varstr)
 {
     int bt, v, t;
     Sym *s, *sa;
-    char buf1[256];
-    const char *tstr;
 
     t = type->t & VT_TYPE;
     bt = t & VT_BTYPE;
-    buf[0] = '\0';
+    std::string buf;
     if (t & VT_CONSTANT)
-        pstrcat(buf, buf_size, "const ");
+        buf += "const ";
     if (t & VT_VOLATILE)
-        pstrcat(buf, buf_size, "volatile ");
+        buf += "volatile ";
     if (t & VT_UNSIGNED)
-        pstrcat(buf, buf_size, "unsigned ");
+        buf += "unsigned ";
+
     switch(bt) {
     case VT_VOID:
-        tstr = "void";
-        goto add_tstr;
-    case VT_BOOL:
-        tstr = "_Bool";
-        goto add_tstr;
-    case VT_BYTE:
-        tstr = "char";
-        goto add_tstr;
-    case VT_SHORT:
-        tstr = "short";
-        goto add_tstr;
-    case VT_INT:
-        tstr = "int";
-        goto add_tstr;
-    case VT_LONG:
-        tstr = "long";
-        goto add_tstr;
-    case VT_LLONG:
-        tstr = "long long";
-        goto add_tstr;
-    case VT_FLOAT:
-        tstr = "float";
-        goto add_tstr;
-    case VT_DOUBLE:
-        tstr = "double";
-        goto add_tstr;
-    case VT_LDOUBLE:
-        tstr = "long double";
-    add_tstr:
-        pstrcat(buf, buf_size, tstr);
+        buf += "void";
         break;
+    case VT_BOOL:
+        buf += "_Bool";
+        break;
+    case VT_BYTE:
+        buf += "char";
+        break;
+    case VT_SHORT:
+        buf += "short";
+        break;
+    case VT_INT:
+        buf += "int";
+        break;
+    case VT_LONG:
+        buf += "long";
+        break;
+    case VT_LLONG:
+        buf += "long long";
+        break;
+    case VT_FLOAT:
+        buf += "float";
+        break;
+    case VT_DOUBLE:
+        buf += "double";
+        break;
+    case VT_LDOUBLE:
+        buf += "long double";
+        break;
+
     case VT_ENUM:
     case VT_STRUCT:
         if (bt == VT_STRUCT)
-            tstr = "struct ";
+            buf += "struct ";
         else
-            tstr = "enum ";
-        pstrcat(buf, buf_size, tstr);
+            buf += "enum ";
         v = type->ref->v & ~SYM_STRUCT;
         if (v >= SYM_FIRST_ANOM)
-            pstrcat(buf, buf_size, "<anonymous>");
+            buf += "<anonymous>";
         else
-            pstrcat(buf, buf_size, get_tok_str(v, NULL));
+            buf += get_tok_str(v, NULL);
         break;
     case VT_FUNC:
         s = type->ref;
-        type_to_str(buf, buf_size, &s->type, varstr);
-        pstrcat(buf, buf_size, "(");
+        buf = type_to_str(&s->type, varstr);
+        buf += "(";
         sa = s->next;
         while (sa != NULL) {
-            type_to_str(buf1, sizeof(buf1), &sa->type, NULL);
-            pstrcat(buf, buf_size, buf1);
+            buf += type_to_str(&sa->type, NULL);
             sa = sa->next;
             if (sa)
-                pstrcat(buf, buf_size, ", ");
+                buf += ", ";
         }
-        pstrcat(buf, buf_size, ")");
-        goto no_var;
+        buf += ")";
+        return buf;
     case VT_PTR:
         s = type->ref;
-        pstrcpy(buf1, sizeof(buf1), "*");
+        std::string buf1 = "*";
         if (varstr)
-            pstrcat(buf1, sizeof(buf1), varstr);
-        type_to_str(buf, buf_size, &s->type, buf1);
-        goto no_var;
+            buf1 += varstr;
+        return type_to_str(&s->type, buf1.c_str());
     }
     if (varstr) {
-        pstrcat(buf, buf_size, " ");
-        pstrcat(buf, buf_size, varstr);
+        buf += " ";
+        buf += varstr;
     }
- no_var: ;
+    return buf;
 }
 
 /* verify type compatibility to store vtop in 'dt' type, and generate
@@ -6235,7 +6213,6 @@ void type_to_str(char *buf, int buf_size,
 static void gen_assign_cast(CType *dt)
 {
     CType *st, *type1, *type2, tmp_type1, tmp_type2;
-    char buf1[256], buf2[256];
     int dbt, sbt;
 
     st = &vtop->type; /* source type */
@@ -6299,9 +6276,9 @@ static void gen_assign_cast(CType *dt)
         tmp_type2.t &= ~(VT_CONSTANT | VT_VOLATILE);
         if (!is_compatible_types(&tmp_type1, &tmp_type2)) {
         error:
-            type_to_str(buf1, sizeof(buf1), st, NULL);
-            type_to_str(buf2, sizeof(buf2), dt, NULL);
-            error("cannot cast '%s' to '%s'", buf1, buf2);
+            const auto type1_str = type_to_str(st, NULL);
+            const auto type2_str = type_to_str(dt, NULL);
+            error("cannot cast '%s' to '%s'", type1_str.c_str(), type2_str.c_str());
         }
         break;
     }
@@ -9660,11 +9637,6 @@ void tcc_delete(TCCState *state)
     for(i = 0; i < state->nb_loaded_dlls; i++)
         tcc_free(state->loaded_dlls[i]);
     tcc_free(state->loaded_dlls);
-
-    /* cached includes */
-    for(i = 0; i < state->nb_cached_includes; i++)
-        tcc_free(state->cached_includes[i]);
-    tcc_free(state->cached_includes);
 
     delete state;
 }
