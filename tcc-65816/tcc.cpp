@@ -1652,7 +1652,6 @@ static Sym *sym_push(int v, CType *type, int r, int c)
     /* XXX: simplify */
     if (!(v & SYM_FIELD) && (v & ~SYM_STRUCT) < SYM_FIRST_ANOM) {
         /* record symbol in token array */
-        //fprintf(stderr,"table_ident index 0x%x\n",(v & ~(SYM_STRUCT)) - TOK_IDENT);
         ts = table_ident[(v & ~(SYM_STRUCT)) - TOK_IDENT];
         if (v & SYM_STRUCT)
             ps = &ts->sym_struct;
@@ -1671,7 +1670,6 @@ static Sym *global_identifier_push(int v, int t, int c)
     s = sym_push2(&global_stack, v, t, c);
     /* don't record anonymous symbol */
     if (v < SYM_FIRST_ANOM) {
-        //fprintf(stderr,"table_ident index 0x%x\n",v - TOK_IDENT);
         ps = &table_ident[v - TOK_IDENT]->sym_identifier;
         /* modify the top most local identifier, so that
            sym_identifier will point to 's' when popped */
@@ -2310,18 +2308,18 @@ static void tok_str_add2(TokenString *s, int t, CValue *cv)
     s->len = len;
 }
 
-/* add the current parse token in token string 's' */
-static void tok_str_add_tok(TokenString *s)
+/* add the current parse token in token string 'tok_str' */
+static void tok_str_add_tok(TokenString *tok_str)
 {
     CValue cval;
 
     /* save line number info */
-    if (file->line_num != s->last_line_num) {
-        s->last_line_num = file->line_num;
-        cval.i = s->last_line_num;
-        tok_str_add2(s, TOK_LINENUM, &cval);
+    if (file->line_num != tok_str->last_line_num) {
+        tok_str->last_line_num = file->line_num;
+        cval.i = tok_str->last_line_num;
+        tok_str_add2(tok_str, TOK_LINENUM, &cval);
     }
-    tok_str_add2(s, tok, &tokc);
+    tok_str_add2(tok_str, tok, &tokc);
 }
 
 #if LDOUBLE_SIZE == 12

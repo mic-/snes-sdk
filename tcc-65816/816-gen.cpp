@@ -114,36 +114,23 @@ struct labels_816 {
 std::vector<labels_816> label;
 
 
-char* get_sym_str(Sym* sym)
+std::string get_sym_str(Sym* sym)
 {
-  static char name[256];
+  std::string name;
   char* symname;
   
   symname = get_tok_str(sym->v, NULL);
   
-  name[0] = 0;
   /* if static, add prefix */
-#if 0
-  if(sym->type.t & VT_STATICLOCAL) {
-    strcpy(name, "__local_");
-  }
-  else
-#endif
   if(sym->type.t & VT_STATIC) {
     if((sym->type.t & VT_STATICLOCAL) && current_fn[0] != 0 && !((sym->type.t & VT_BTYPE) == VT_FUNC))
-      sprintf(name, "%s_FUNC_%s_", static_prefix, current_fn);
+      name = std::string(static_prefix) + "_FUNC_" + current_fn;
     else
-      strcpy(name, static_prefix);
-#if 0
-    for(int i = 0; i < labels; i++) {
-      if(strcmp(label[i].name, symname) == 0)
-        strcpy(name, "__local_");
-    }
-#endif
+      name = static_prefix;
   }
     
   /* add symbol name */
-  strcat(name, symname);
+  name += symname;
 
   return name;
 }
@@ -247,26 +234,26 @@ void load(int r, SValue* sv)
     }
     else if(v == VT_CONST) {
       if(fr & VT_SYM) {	// deref symbol + displacement
-        char* sy = get_sym_str(sv->sym);
+        std::string sy = get_sym_str(sv->sym);
         if(is_float(ft)) {
-          pr("; fld%d [%s + %d], tcc__f%d\n", length, sy, fc, r - TREG_F0);
+          pr("; fld%d [%s + %d], tcc__f%d\n", length, sy.c_str(), fc, r - TREG_F0);
           switch(length) {
-          case 4: pr("lda.l %s + %d\nsta.b tcc__f%d\nlda.l %s + %d + 2\nsta.b tcc__f%dh\n", sy, fc, r - TREG_F0, sy, fc, r - TREG_F0); break;
+          case 4: pr("lda.l %s + %d\nsta.b tcc__f%d\nlda.l %s + %d + 2\nsta.b tcc__f%dh\n", sy.c_str(), fc, r - TREG_F0, sy.c_str(), fc, r - TREG_F0); break;
           default: error("ICE 1");
           }
         }
         else {
-          pr("; ld%d [%s + %d], tcc__r%d\n", length, sy, fc, r);
+          pr("; ld%d [%s + %d], tcc__r%d\n", length, sy.c_str(), fc, r);
           // FIXME: This implementation is moronic
           if(fc > 65535) error("index too big");
           switch(length) {
           case 1:
-            pr("lda.w #0\nsep #$20\nlda.l %s + %d\nrep #$20\n", sy, fc);
+            pr("lda.w #0\nsep #$20\nlda.l %s + %d\nrep #$20\n", sy.c_str(), fc);
             if(!(ft & VT_UNSIGNED)) pr("xba\nxba\nbpl +\nora.w #$ff00\n+\n");
             pr("sta.b tcc__r%d\n", r);
             break;
-          case 2: pr("lda.l %s + %d\nsta.b tcc__r%d\n", sy, fc, r); break;
-          case 4: pr("lda.l %s + %d\nsta.b tcc__r%d\nlda.l %s + %d + 2\nsta.b tcc__r%dh\n", sy, fc, r, sy, fc, r); break;
+          case 2: pr("lda.l %s + %d\nsta.b tcc__r%d\n", sy.c_str(), fc, r); break;
+          case 4: pr("lda.l %s + %d\nsta.b tcc__r%d\nlda.l %s + %d + 2\nsta.b tcc__r%dh\n", sy.c_str(), fc, r, sy.c_str(), fc, r); break;
           default: error("ICE 1");
           }
         }
@@ -352,11 +339,10 @@ void load(int r, SValue* sv)
   } else {	// VT_LVAL
     if(v == VT_CONST) {
       if(fr & VT_SYM) {	// symbolic constant
-        //greloc(cur_text_section, sv->sym, ind, R_DATA_32);
-        char* sy = get_sym_str(sv->sym);
-        pr("; ld%d #%s + %d, tcc__r%d (type 0x%x)\n", length,sy, fc, r, ft);
+        std::string sy = get_sym_str(sv->sym);
+        pr("; ld%d #%s + %d, tcc__r%d (type 0x%x)\n", length, sy.c_str(), fc, r, ft);
         if(length != PTR_SIZE) pr("; FISHY! length <> PTR_SIZE! (may be an array)\n");
-        pr("lda.w #:%s\nsta.b tcc__r%dh\nlda.w #%s + %d\nsta.b tcc__r%d\n", sy, r, sy, fc, r);
+        pr("lda.w #:%s\nsta.b tcc__r%dh\nlda.w #%s + %d\nsta.b tcc__r%d\n", sy.c_str(), r, sy.c_str(), fc, r);
       }
       else {	// numeric constant
         pr("; ld%d #%d,tcc__r%d\n",length,sv->c.ul,r);
@@ -383,8 +369,8 @@ void load(int r, SValue* sv)
     else if(v == VT_LOCAL) {
       if(fr & VT_SYM) {
         error("symbol");
-        char* sy = get_sym_str(sv->sym);
-        pr("; LOCAL ld%d #%s, tcc__r%d (type 0x%x)\n", length,sy, r, ft);
+        std::string sy = get_sym_str(sv->sym);
+        pr("; LOCAL ld%d #%s, tcc__r%d (type 0x%x)\n", length, sy.c_str(), r, ft);
       }
       else {	// local pointer
         pr("; ld%d #(sp) + %d,tcc__r%d (fr 0x%x ft 0x%x fc 0x%x)\n",length,sv->c.ul,r,fr,ft,fc);
@@ -458,18 +444,18 @@ void store(int r, SValue* sv)
     }
     if(v == VT_CONST) {
       if(fr & VT_SYM) {	// deref symbol
-        char* sy = get_sym_str(sv->sym);
-        if(r >= TREG_F0) pr("; fst%d tcc__f%d, [%s,%d]\n", length, r - TREG_F0, sy, fc);
-        else pr("; st%d tcc__r%d, [%s,%d]\n", length, r, sy, fc);
+        std::string sy = get_sym_str(sv->sym);
+        if(r >= TREG_F0) pr("; fst%d tcc__f%d, [%s,%d]\n", length, r - TREG_F0, sy.c_str(), fc);
+        else pr("; st%d tcc__r%d, [%s,%d]\n", length, r, sy.c_str(), fc);
         if(r >= TREG_F0 && length != 4) error("illegal float store of length %d", length);
         switch(length) {
-          case 1: pr("sep #$20\nlda.b tcc__r%d\nsta.l %s + %d\nrep #$20\n", r, sy, fc); break;
-          case 2: pr("lda.b tcc__r%d\nsta.l %s + %d\n", r, sy, fc); break;
+          case 1: pr("sep #$20\nlda.b tcc__r%d\nsta.l %s + %d\nrep #$20\n", r, sy.c_str(), fc); break;
+          case 2: pr("lda.b tcc__r%d\nsta.l %s + %d\n", r, sy.c_str(), fc); break;
           case 4: 
             if(r >= TREG_F0)
-              pr("lda.b tcc__f%d\nsta.l %s + %d\nlda.b tcc__f%dh\nsta.l %s + %d + 2\n", r - TREG_F0, sy, fc, r - TREG_F0, sy, fc);
+              pr("lda.b tcc__f%d\nsta.l %s + %d\nlda.b tcc__f%dh\nsta.l %s + %d + 2\n", r - TREG_F0, sy.c_str(), fc, r - TREG_F0, sy.c_str(), fc);
             else
-              pr("lda.b tcc__r%d\nsta.l %s + %d\nlda.b tcc__r%dh\nsta.l %s + %d + 2\n", r, sy, fc, r, sy, fc);
+              pr("lda.b tcc__r%d\nsta.l %s + %d\nlda.b tcc__r%dh\nsta.l %s + %d + 2\n", r, sy.c_str(), fc, r, sy.c_str(), fc);
             break;
           default: error("ICE 5"); break;
         }
@@ -594,9 +580,9 @@ void gfunc_call(int nb_args)
             // push immediate
             pr("; push%d imm r 0x%x\n",length,vtop->r);
             if(vtop->r & VT_SYM) {
-              char* sy = get_sym_str(vtop->sym);
+              std::string sy = get_sym_str(vtop->sym);
               if(length != PTR_SIZE) pr("; FISHY! length <> PTR_SIZE! (may be an array)\n");
-              pr("pea.w :%s\npea.w %s %c %d\n", sy, sy, vtop->c.i < 0 ? '-' : '+', abs(vtop->c.i));
+              pr("pea.w :%s\npea.w %s %c %d\n", sy.c_str(), sy.c_str(), vtop->c.i < 0 ? '-' : '+', abs(vtop->c.i));
               length = PTR_SIZE;
             }
             else {
@@ -658,10 +644,10 @@ void gfunc_call(int nb_args)
       pr("; zwei\njsr.l tcc__jsl_r10\n");
     }
   }
-  else
-    pr("jsr.l %s\n", get_sym_str(vtop->sym));
-
-  //gcall_or_jmpr(0);
+  else {
+    std::string sym_name = get_sym_str(vtop->sym);
+    pr("jsr.l %s\n", sym_name.c_str());
+  }
 
   if (args_size - restore_args_size && func_sym->r != FUNC_STDCALL) {
       pr("; add sp, #%d\n",args_size - restore_args_size);
@@ -1242,7 +1228,6 @@ void gfunc_prolog(CType* func_type)
   addr=3;	// skip 24-bit return address
   loc = 0;
   if((func_vt.t & VT_BTYPE) == VT_STRUCT) {
-    //fprintf(stderr,"struct!\n");
     func_vc = addr;
     addr += PTR_SIZE;
     n += PTR_SIZE;
@@ -1250,7 +1235,8 @@ void gfunc_prolog(CType* func_type)
 
   /* super-dirty hack to get the function name */
   symf = (Sym*) ( ((void*)func_type) - offsetof(Sym, type) );
-  strcpy(current_fn, get_sym_str(symf));
+  std::string func_name = get_sym_str(symf);
+  strcpy(current_fn, func_name.c_str());
 
   /* wlalink does not cut up sections, so it is desirable to have a section
      for each function to keep the amount of unused memory in the ROM banks
