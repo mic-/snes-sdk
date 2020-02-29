@@ -106,9 +106,9 @@ std::string current_func;
    random number, saved to static_prefix. */
 const std::string static_prefix = "__tccs_";
 
-char* label_workaround = NULL;
+std::string label_workaround;
 struct labels_816 {
-  char* name;
+  std::string name;
   int pos;
 };
 std::vector<labels_816> label;
@@ -117,9 +117,8 @@ std::vector<labels_816> label;
 std::string get_sym_str(Sym* sym)
 {
   std::string name;
-  char* symname;
   
-  symname = get_tok_str(sym->v, NULL);
+  const auto symname = get_tok_str(sym->v, NULL);
   
   /* if static, add prefix */
   if(sym->type.t & VT_STATIC) {
@@ -159,9 +158,9 @@ void gsym_addr(int from, int to)
   /* the label generation code sets this for us so we know when a symbol
      is a label and what its name is, so that we can remember its name
      and position so the output code can insert it correctly */
-  if(label_workaround) {
+  if(!label_workaround.empty()) {
     label.push_back({.name = label_workaround, .pos = to});
-    label_workaround = NULL;
+    label_workaround.clear();
   }
   int i;
   // pair up the jump with the target address

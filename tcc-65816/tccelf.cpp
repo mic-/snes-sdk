@@ -920,7 +920,7 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
           int next_jump_pos = 0;	/* the next offset in the text section where we will look for a jump target */
           for(j = 0; j < size; j++) {
             for (const auto& lbl : label) {
-              if(lbl.pos == j) fprintf(f, "%s%s:\n", static_prefix.c_str() /* "__local_" */, lbl.name);
+              if(lbl.pos == j) fprintf(f, "%s%s:\n", static_prefix.c_str() /* "__local_" */, lbl.name.c_str());
             }
             /* insert jump labels */
             if(next_jump_pos == j) {
