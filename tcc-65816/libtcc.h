@@ -29,10 +29,10 @@ int tcc_set_warning(TCCState *s, const char *warning_name, int value);
 /* preprocessor */
 
 /* add include path */
-int tcc_add_include_path(TCCState *s, const char *pathname);
+int tcc_add_include_path(TCCState *s, const std::string& pathname);
 
 /* add in system include path */
-int tcc_add_sysinclude_path(TCCState *s, const char *pathname);
+int tcc_add_sysinclude_path(TCCState *s, const std::string& pathname);
 
 /* define preprocessor symbol 'sym'. Can put optional value */
 void tcc_define_symbol(TCCState *s, const char *sym, const char *value);
@@ -67,7 +67,7 @@ int tcc_set_output_type(TCCState *s, int output_type);
 #define TCC_OUTPUT_FORMAT_COFF   2 /* COFF */
 
 /* equivalent to -Lpath option */
-int tcc_add_library_path(TCCState *s, const char *pathname);
+int tcc_add_library_path(TCCState *s, const std::string& pathname);
 
 /* the library name is the same as the argument of the '-l' option */
 int tcc_add_library(TCCState *s, const std::string& libraryname);

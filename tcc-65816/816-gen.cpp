@@ -162,7 +162,6 @@ void gsym_addr(int from, int to)
     label.push_back({.name = label_workaround, .pos = to});
     label_workaround.clear();
   }
-  int i;
   // pair up the jump with the target address
   // the tcc_output_... function will add a
   // label __local_<i> at 'to' when writing the output

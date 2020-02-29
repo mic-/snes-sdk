@@ -410,7 +410,7 @@ static int num_callers = 6;
 static struct TCCState *tcc_state;
 
 /* give the path of the tcc libraries */
-static const char *tcc_lib_path = CONFIG_TCCDIR;
+static std::string tcc_lib_path = CONFIG_TCCDIR;
 
 static void *tcc_mallocz(unsigned long size);
 static void dynarray_add(void ***ptab, int *nb_ptr, void *data);
@@ -9543,8 +9543,7 @@ TCCState *tcc_new(void)
     /* default library paths */
 #ifdef TCC_TARGET_PE
     {
-        const auto full_lib_path = std::string(tcc_lib_path) + "/lib";
-        tcc_add_library_path(s, full_lib_path.c_str());
+        tcc_add_library_path(s, tcc_lib_path + "/lib");
     }
 #else
     tcc_add_library_path(s, "/usr/local/lib");
@@ -9616,13 +9615,13 @@ void tcc_delete(TCCState *state)
     delete state;
 }
 
-int tcc_add_include_path(TCCState *s1, const char *pathname)
+int tcc_add_include_path(TCCState *s1, const std::string& pathname)
 {
     s1->include_paths.push_back(pathname);
     return 0;
 }
 
-int tcc_add_sysinclude_path(TCCState *s1, const char *pathname)
+int tcc_add_sysinclude_path(TCCState *s1, const std::string& pathname)
 {
     s1->sysinclude_paths.push_back(pathname);
     return 0;
@@ -9673,7 +9672,7 @@ int tcc_add_file(TCCState *state, const std::string& filename)
     return tcc_add_file_internal(state, filename, AFF_PRINT_ERROR);
 }
 
-int tcc_add_library_path(TCCState *state, const char *pathname)
+int tcc_add_library_path(TCCState *state, const std::string& pathname)
 {
     state->library_paths.push_back(pathname);
     return 0;
@@ -9683,8 +9682,6 @@ int tcc_add_library_path(TCCState *state, const char *pathname)
 /* XXX: add '-rpath' option support ? */
 static int tcc_add_dll(TCCState *state, const std::string& filename, int flags)
 {
-    int i;
-
     for(const auto& libpath : state->library_paths) {
         const auto path_and_name = libpath + '/' + filename;
         if (tcc_add_file_internal(state, path_and_name, flags) == 0)
@@ -9696,8 +9693,6 @@ static int tcc_add_dll(TCCState *state, const std::string& filename, int flags)
 /* the library name is the same as the argument of the '-l' option */
 int tcc_add_library(TCCState *state, const std::string& libraryname)
 {
-    int i;
-    
     /* first we look for the dynamic library if not static linking */
     if (!state->static_link) {
 #ifdef TCC_TARGET_PE
@@ -9733,19 +9728,15 @@ int tcc_set_output_type(TCCState *s, int output_type)
     s->output_type = output_type;
 
     if (!s->nostdinc) {
-        char buf[1024];
-
         /* default include paths */
         /* XXX: reverse order needed if -isystem support */
 #if !defined(TCC_TARGET_PE) && !defined(TCC_TARGET_816)
         tcc_add_sysinclude_path(s, "/usr/local/include");
         tcc_add_sysinclude_path(s, "/usr/include");
 #endif
-        snprintf(buf, sizeof(buf), "%s/include", tcc_lib_path);
-        tcc_add_sysinclude_path(s, buf);
+        tcc_add_sysinclude_path(s, tcc_lib_path + "/include");
 #ifdef TCC_TARGET_PE
-        snprintf(buf, sizeof(buf), "%s/include/winapi", tcc_lib_path);
-        tcc_add_sysinclude_path(s, buf);
+        tcc_add_sysinclude_path(s, tcc_lib_path + "/include/winapi");
 #endif
     }
 
@@ -10251,7 +10242,6 @@ int parse_args(TCCState *s, int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    int i;
     TCCState *s;
     int nb_objfiles, ret, optind;
     char objfilename[1024];
@@ -10289,7 +10279,7 @@ int main(int argc, char **argv)
 
     if (print_search_dirs) {
         /* enough for Linux kernel */
-        printf("install: %s/\n", tcc_lib_path);
+        printf("install: %s/\n", tcc_lib_path.c_str());
         return 0;
     }
 
