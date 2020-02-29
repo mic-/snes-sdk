@@ -96,7 +96,7 @@ int reg_classes[NB_REGS] = {
 
 #define LOCAL_LABEL "__local_%d"
 
-char current_fn[256] = "";
+std::string current_func;
 
 /* yet another terrible workaround
    WLA does not have file-local symbols, only section-local and global.
@@ -104,7 +104,7 @@ char current_fn[256] = "";
    unique name. not knowing how to choose one deterministically (filename?
    could be more than one file with the same name...), I chose to use a
    random number, saved to static_prefix. */
-constexpr const char* static_prefix = "__tccs_";
+const std::string static_prefix = "__tccs_";
 
 char* label_workaround = NULL;
 struct labels_816 {
@@ -123,8 +123,8 @@ std::string get_sym_str(Sym* sym)
   
   /* if static, add prefix */
   if(sym->type.t & VT_STATIC) {
-    if((sym->type.t & VT_STATICLOCAL) && current_fn[0] != 0 && !((sym->type.t & VT_BTYPE) == VT_FUNC))
-      name = std::string(static_prefix) + "_FUNC_" + current_fn;
+    if((sym->type.t & VT_STATICLOCAL) && !current_func.empty() && !((sym->type.t & VT_BTYPE) == VT_FUNC))
+      name = static_prefix + "_FUNC_" + current_func;
     else
       name = static_prefix;
   }
@@ -290,7 +290,7 @@ void load(int r, SValue* sv)
           pr("; fld%d [sp,%d],tcc__f%d\n", length, fc, r - TREG_F0);
           if(length != 4) error("ICE 2f");
           fc = adjust_stack(fc, args_size + 2);
-          pr("lda %d + __%s_locals + 1,s\nsta.b tcc__f%d\nlda %d + __%s_locals + 1,s\nsta.b tcc__f%dh\n", fc+args_size, current_fn, r - TREG_F0, fc+args_size+2, current_fn, r - TREG_F0);
+          pr("lda %d + __%s_locals + 1,s\nsta.b tcc__f%d\nlda %d + __%s_locals + 1,s\nsta.b tcc__f%dh\n", fc+args_size, current_func.c_str(), r - TREG_F0, fc+args_size+2, current_func.c_str(), r - TREG_F0);
           fc = restore_stack(fc);
         }
         else {
@@ -305,12 +305,12 @@ void load(int r, SValue* sv)
           fc = adjust_stack(fc, args_size + 2);
           switch(length) {
             case 1:
-              pr("lda.w #0\nsep #$20\nlda %d + __%s_locals + 1,s\nrep #$20\n", fc+args_size, current_fn);
+              pr("lda.w #0\nsep #$20\nlda %d + __%s_locals + 1,s\nrep #$20\n", fc+args_size, current_func.c_str());
               if(!(ft & VT_UNSIGNED)) pr("xba\nxba\nbpl +\nora.w #$ff00\n+\n");
               pr("sta.b tcc__r%d\n", r);
               break;
-            case 2: pr("lda %d + __%s_locals + 1,s\nsta.b tcc__r%d\n", fc+args_size, current_fn, r); break;
-            case 4: pr("lda %d + __%s_locals + 1,s\nsta.b tcc__r%d\nlda %d + __%s_locals + 1,s\nsta.b tcc__r%dh\n", fc+args_size, current_fn, r, fc+args_size + 2, current_fn, r); break;
+            case 2: pr("lda %d + __%s_locals + 1,s\nsta.b tcc__r%d\n", fc+args_size, current_func.c_str(), r); break;
+            case 4: pr("lda %d + __%s_locals + 1,s\nsta.b tcc__r%d\nlda %d + __%s_locals + 1,s\nsta.b tcc__r%dh\n", fc+args_size, current_func.c_str(), r, fc+args_size + 2, current_func.c_str(), r); break;
             default: error("ICE 2"); break;
           }
           fc = restore_stack(fc);
@@ -375,7 +375,7 @@ void load(int r, SValue* sv)
       else {	// local pointer
         pr("; ld%d #(sp) + %d,tcc__r%d (fr 0x%x ft 0x%x fc 0x%x)\n",length,sv->c.ul,r,fr,ft,fc);
         // pointer; have to ensure the upper word is correct (page 0)
-        pr("stz.b tcc__r%dh\ntsa\nclc\nadc #(%d + __%s_locals + 1)\nsta.b tcc__r%d\n", r, sv->c.ul + args_size, current_fn, r);
+        pr("stz.b tcc__r%dh\ntsa\nclc\nadc #(%d + __%s_locals + 1)\nsta.b tcc__r%d\n", r, sv->c.ul + args_size, current_func.c_str(), r);
       }
       return;
     }
@@ -424,16 +424,6 @@ void store(int r, SValue* sv)
   
   pr("; store r 0x%x fr 0x%x ft 0x%x fc 0x%x\n",r,fr,ft,fc);
 
-#if 0
-  // function pointer issues
-  //store r 0x1 fr 0x1f2 ft 0x0 fc 0xfffffffc
-  // struct issues
-  // store r 0x0 fr 0x1f2 ft 0x0 fc 0xfffffffe
-  if(r == 0 && fr == 0x1f2 && ft == 0 && fc == -2 && strcmpr(current_fn,"nimmmich") == 0) {
-    r = *((int*)NULL);
-  }
-#endif
-
   v = fr & VT_VALMASK;
   base = -1;
   if ((fr & VT_LVAL) || fr == VT_LOCAL) {
@@ -478,7 +468,7 @@ void store(int r, SValue* sv)
           pr("; fst%d tcc__f%d, [sp,%d]\n", length, r - TREG_F0, fc);
           fc = adjust_stack(fc, args_size + 2);
           switch(length) {
-            case 4: pr("lda.b tcc__f%d\nsta %d + __%s_locals + 1,s\nlda.b tcc__f%dh\nsta %d + __%s_locals + 1,s\n", r - TREG_F0, fc+args_size, current_fn, r - TREG_F0, fc+args_size + 2, current_fn); break;
+            case 4: pr("lda.b tcc__f%d\nsta %d + __%s_locals + 1,s\nlda.b tcc__f%dh\nsta %d + __%s_locals + 1,s\n", r - TREG_F0, fc+args_size, current_func.c_str(), r - TREG_F0, fc+args_size + 2, current_func.c_str()); break;
             default: error("ICE 6f"); break;
           }
           fc = restore_stack(fc);
@@ -496,9 +486,9 @@ void store(int r, SValue* sv)
           pr("; st%d tcc__r%d, [sp,%d]\n",length,r,fc);
           fc = adjust_stack(fc, args_size + 2);
           switch(length) {
-            case 1: pr("sep #$20\nlda.b tcc__r%d\nsta %d + __%s_locals + 1,s\nrep #$20\n", r, fc+args_size, current_fn); break;
-            case 2: pr("lda.b tcc__r%d\nsta %d + __%s_locals + 1,s\n", r, fc+args_size, current_fn); break;
-            case 4: pr("lda.b tcc__r%d\nsta %d + __%s_locals + 1,s\nlda.b tcc__r%dh\nsta %d + __%s_locals + 1,s\n", r, fc+args_size, current_fn, r, fc+args_size + 2, current_fn); break;
+            case 1: pr("sep #$20\nlda.b tcc__r%d\nsta %d + __%s_locals + 1,s\nrep #$20\n", r, fc+args_size, current_func.c_str()); break;
+            case 2: pr("lda.b tcc__r%d\nsta %d + __%s_locals + 1,s\n", r, fc+args_size, current_func.c_str()); break;
+            case 4: pr("lda.b tcc__r%d\nsta %d + __%s_locals + 1,s\nlda.b tcc__r%dh\nsta %d + __%s_locals + 1,s\n", r, fc+args_size, current_func.c_str(), r, fc+args_size + 2, current_func.c_str()); break;
             default: error("ICE 6"); break;
           }
           fc = restore_stack(fc);
@@ -792,7 +782,11 @@ void gen_opi(int op)
     vtop--;
   }
 
-  pr("; gen_opi len %d op %c\n",length,op);
+  if (op > 32 && op <= 126) {
+    pr("; gen_opi len %d op %c\n",length,op);
+  } else {
+    pr("; gen_opi len %d op 0x%02x\n",length,op);
+  }
   switch(op) {
     // multiplication
     case '*':
@@ -1235,8 +1229,7 @@ void gfunc_prolog(CType* func_type)
 
   /* super-dirty hack to get the function name */
   symf = (Sym*) ( ((void*)func_type) - offsetof(Sym, type) );
-  std::string func_name = get_sym_str(symf);
-  strcpy(current_fn, func_name.c_str());
+  current_func = get_sym_str(symf);
 
   /* wlalink does not cut up sections, so it is desirable to have a section
      for each function to keep the amount of unused memory in the ROM banks
@@ -1249,7 +1242,7 @@ void gfunc_prolog(CType* func_type)
     section_closed = 0;
   }
     
-  pr("\n%s:\n",current_fn);
+  pr("\n%s:\n", current_func.c_str());
 
   while((sym = sym->next)) {
     CType* type;
@@ -1259,8 +1252,8 @@ void gfunc_prolog(CType* func_type)
     addr += size;
     n += size;
   }
-  pr("; sub sp,#__%s_locals\n",current_fn);
-  pr(".ifgr __%s_locals 0\ntsa\nsec\nsbc #__%s_locals\ntas\n.endif\n",current_fn,current_fn);
+  pr("; sub sp,#__%s_locals\n", current_func.c_str());
+  pr(".ifgr __%s_locals 0\ntsa\nsec\nsbc #__%s_locals\ntas\n.endif\n", current_func.c_str(), current_func.c_str());
   loc = 0; // huh squared?
 }
 
@@ -1269,20 +1262,19 @@ std::vector<int> localnos;
 
 void gfunc_epilog(void)
 {
-  pr("; add sp, #__%s_locals\n",current_fn);
-  pr(".ifgr __%s_locals 0\ntsa\nclc\nadc #__%s_locals\ntas\n.endif\n", current_fn, current_fn);
+  pr("; add sp, #__%s_locals\n", current_func.c_str());
+  pr(".ifgr __%s_locals 0\ntsa\nclc\nadc #__%s_locals\ntas\n.endif\n", current_func.c_str(), current_func.c_str());
   pr("rtl\n");
   
   pr(".ends\n");
   section_closed = 1;
   
   if(-loc > 0x1f00) error("stack overflow");
-  //pr(".define __%s_locals %d\n",current_fn,-loc);
   /* simply putting a .define after the function does not work in some cases
      for unknown reasons (wla-dx complains about unresolved symbols)
      putting them before the reference works, but this has to be done by the
      output code, so we have to save the various locals sizes somewhere */
-  locals.push_back(current_fn);
+  locals.push_back(current_func);
   localnos.push_back(-loc);
-  current_fn[0] = 0;
+  current_func.clear();
 }

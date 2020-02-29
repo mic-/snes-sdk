@@ -1121,8 +1121,7 @@ static void put_extern_sym2(Sym *sym, Section *section,
 {
     int sym_type, sym_bind, sh_num, info;
     Elf32_Sym *esym;
-    const char *name;
-    char buf1[256];
+    std::string name;
 
     if (section == NULL)
         sh_num = SHN_UNDEF;
@@ -1143,8 +1142,6 @@ static void put_extern_sym2(Sym *sym, Section *section,
         name = get_tok_str(sym->v, NULL);
 #ifdef CONFIG_TCC_BCHECK
         if (do_bounds_check) {
-            char buf[32];
-
             /* XXX: avoid doing that for statics ? */
             /* if bound checking is activated, we change some function
                names by adding the "__bound" prefix */
@@ -1154,25 +1151,19 @@ static void put_extern_sym2(Sym *sym, Section *section,
             case TOK_memset:
             case TOK_strlen:
             case TOK_strcpy:
-                strcpy(buf, "__bound_");
-                strcat(buf, name);
-                name = buf;
+                name.insert(0, "__bound_");
                 break;
             }
         }
 #endif
         if (tcc_state->leading_underscore && can_add_underscore) {
-            buf1[0] = '_';
-            pstrcpy(buf1 + 1, sizeof(buf1) - 1, name);
-            name = buf1;
+            name.insert(0, 1, '_');
         }
         if (sym->type.t & VT_STATIC /* && name[0] != 'L' && name[1] != '.' */) {
-            if ((sym->type.t & VT_STATICLOCAL) && current_fn[0] != 0 /*&& !((sym->type.t & VT_BTYPE) == VT_FUNC)*/)
-                sprintf(buf1, "%s_FUNC_%s_", static_prefix, current_fn);
+            if ((sym->type.t & VT_STATICLOCAL) && !current_func.empty() /*&& !((sym->type.t & VT_BTYPE) == VT_FUNC)*/)
+                name = static_prefix + "_FUNC_" + current_func + name;
             else
-                strcpy(buf1, static_prefix);
-            strcat(buf1, name);
-            name = buf1;
+                name = static_prefix + name;
         }
         info = ELF32_ST_INFO(sym_bind, sym_type);
         sym->c = add_elf_sym(symtab_section, value, size, info, 0, sh_num, name);
