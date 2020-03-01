@@ -280,8 +280,8 @@ typedef struct BufferedFile {
     int ifndef_macro_saved; /* saved ifndef_macro */
     int *ifdef_stack_ptr; /* ifdef_stack value at the start of the file */
     char inc_type;          /* type of include */
-    char inc_filename[512]; /* filename specified by the user */
-    char filename[1024];    /* current filename - here to simplify code */
+    std::string inc_filename; /* filename specified by the user */
+    std::string filename;    /* current filename - here to simplify code */
     unsigned char buffer[IO_BUF_SIZE + 1]; /* extra size for CH_EOB char */
 } BufferedFile;
 
@@ -1240,13 +1240,13 @@ void error1(TCCState *s1, int is_warning, const char *fmt, va_list ap)
     if (file) {
         for(f = s1->include_stack; f < s1->include_stack_ptr; f++)
             strcat_printf(buf, sizeof(buf), "In file included from %s:%d:\n", 
-                          (*f)->filename, (*f)->line_num);
+                          (*f)->filename.c_str(), (*f)->line_num);
         if (file->line_num > 0) {
             strcat_printf(buf, sizeof(buf), 
-                          "%s:%d: ", file->filename, file->line_num);
+                          "%s:%d: ", file->filename.c_str(), file->line_num);
         } else {
             strcat_printf(buf, sizeof(buf),
-                          "%s: ", file->filename);
+                          "%s: ", file->filename.c_str());
         }
     } else {
         strcat_printf(buf, sizeof(buf),
@@ -1705,28 +1705,27 @@ static void sym_pop(Sym **ptop, Sym *b)
 
 /* I/O layer */
 
-BufferedFile *tcc_open(TCCState *s1, const char *filename)
+BufferedFile *tcc_open(TCCState *s1, const std::string& filename)
 {
     int fd;
     BufferedFile *bf;
 
-    fd = open(filename, O_RDONLY | O_BINARY);
+    fd = open(filename.c_str(), O_RDONLY | O_BINARY);
     if (fd < 0)
-        return NULL;
-    bf = (BufferedFile*) tcc_malloc(sizeof(BufferedFile));
+        return nullptr;
+    bf = new BufferedFile{};
     if (!bf) {
         close(fd);
-        return NULL;
+        return nullptr;
     }
     bf->fd = fd;
     bf->buf_ptr = bf->buffer;
     bf->buf_end = bf->buffer;
     bf->buffer[0] = CH_EOB; /* put eob symbol */
-    pstrcpy(bf->filename, sizeof(bf->filename), filename);
+    bf->filename = filename;
     bf->line_num = 1;
     bf->ifndef_macro = 0;
     bf->ifdef_stack_ptr = s1->ifdef_stack_ptr;
-    //    printf("opening '%s'\n", filename);
     return bf;
 }
 
@@ -1734,7 +1733,7 @@ void tcc_close(BufferedFile *bf)
 {
     total_lines += bf->line_num;
     close(bf->fd);
-    tcc_free(bf);
+    delete bf;
 }
 
 /* fill input buffer and peek next char */
@@ -2738,18 +2737,18 @@ static void preprocess(int is_bof)
             /* no need to parse the include because the 'ifndef macro'
                is defined */
 #ifdef INC_DEBUG
-            printf("%s: skipping %s\n", file->filename, buf);
+            printf("%s: skipping %s\n", file->filename.c_str(), buf);
 #endif
         } else {
             if (c == '\"') {
                 /* first search in current dir if "header.h" */
                 size = 0;
-                p = strrchr(file->filename, '/');
-                if (p) 
-                    size = p + 1 - file->filename;
+                const auto last_slash_pos = file->filename.rfind('/');
+                if (last_slash_pos != std::string::npos)
+                    size = last_slash_pos + 1;
                 if (size > sizeof(buf1) - 1)
                     size = sizeof(buf1) - 1;
-                memcpy(buf1, file->filename, size);
+                memcpy(buf1, file->filename.c_str(), size);
                 buf1[size] = '\0';
                 pstrcat(buf1, sizeof(buf1), buf);
                 f = tcc_open(s1, buf1);
@@ -2785,17 +2784,17 @@ static void preprocess(int is_bof)
             f = NULL;
         found:
 #ifdef INC_DEBUG
-            printf("%s: including %s\n", file->filename, buf1);
+            printf("%s: including %s\n", file->filename.c_str(), buf1);
 #endif
             f->inc_type = c;
-            pstrcpy(f->inc_filename, sizeof(f->inc_filename), buf);
+            f->inc_filename = buf;
             /* push current file in stack */
             /* XXX: fix current line init */
             *s1->include_stack_ptr++ = file;
             file = f;
             /* add include file debug info */
             if (do_debug) {
-                put_stabs(file->filename, N_BINCL, 0, 0, 0);
+                put_stabs(file->filename.c_str(), N_BINCL, 0, 0, 0);
             }
             tok_flags |= TOK_FLAG_BOF | TOK_FLAG_BOL;
             ch = file->buf_ptr[0];
@@ -2881,8 +2880,7 @@ static void preprocess(int is_bof)
         if (tok != TOK_LINEFEED) {
             if (tok != TOK_STR)
                 error("#line");
-            pstrcpy(file->filename, sizeof(file->filename), 
-                    (char *)tokc.cstr->data);
+            file->filename = static_cast<const char*>(tokc.cstr->data);
         }
         break;
     case TOK_ERROR:
@@ -3896,7 +3894,7 @@ static int macro_subst_tok(TokenString *tok_str,
     Sym *args, *sa, *sa1;
     int mstr_allocated, parlevel, *mstr, t, t1;
     TokenString str;
-    char *cstrval;
+    const char *cstrval;
     CValue cval;
     CString cstr;
     char buf[32];
@@ -3909,7 +3907,7 @@ static int macro_subst_tok(TokenString *tok_str,
         t1 = TOK_PPNUM;
         goto add_cstr1;
     } else if (tok == TOK___FILE__) {
-        cstrval = file->filename;
+        cstrval = file->filename.c_str();
         goto add_cstr;
     } else if (tok == TOK___DATE__ || tok == TOK___TIME__) {
         time_t ti;
@@ -9307,7 +9305,7 @@ static int tcc_compile(TCCState *s1)
     volatile int section_sym;
 
 #ifdef INC_DEBUG
-    printf("%s: **** new file\n", file->filename);
+    printf("%s: **** new file\n", file->filename.c_str());
 #endif
     preprocess_init(s1);
 
@@ -9324,14 +9322,14 @@ static int tcc_compile(TCCState *s1)
         pstrcat(buf, sizeof(buf), "/");
         put_stabs_r(buf, N_SO, 0, 0, 
                     text_section->data_offset, text_section, section_sym);
-        put_stabs_r(file->filename, N_SO, 0, 0, 
+        put_stabs_r(file->filename.c_str(), N_SO, 0, 0, 
                     text_section->data_offset, text_section, section_sym);
     }
     /* an elf symbol of type STT_FILE must be put so that STB_LOCAL
        symbols can be safely used */
     put_elf_sym(symtab_section, 0, 0, 
                 ELF32_ST_INFO(STB_LOCAL, STT_FILE), 0, 
-                SHN_ABS, file->filename);
+                SHN_ABS, file->filename.c_str());
 
     /* define some often used types */
     int_type.t = VT_INT;
@@ -9394,7 +9392,7 @@ int tcc_compile_string(TCCState *s, const char *str)
     buf[len] = CH_EOB;
     bf->buf_ptr = buf;
     bf->buf_end = buf + len;
-    pstrcpy(bf->filename, sizeof(bf->filename), "<string>");
+    bf->filename = "<string>";
     bf->line_num = 1;
     file = bf;
     
@@ -9424,7 +9422,7 @@ void tcc_define_symbol(TCCState *s1, const char *sym, const char *value)
     bf->buf_ptr = bf->buffer;
     bf->buf_end = bf->buffer + strlen((const char*) bf->buffer);
     *bf->buf_end = CH_EOB;
-    bf->filename[0] = '\0';
+    bf->filename.clear();
     bf->line_num = 1;
     file = bf;
     
@@ -9642,7 +9640,7 @@ static int tcc_add_file_internal(TCCState *s1, const std::string& filename, int 
 
     /* open the file */
     saved_file = file;
-    file = tcc_open(s1, filename.c_str());
+    file = tcc_open(s1, filename);
     if (!file) {
         if (flags & AFF_PRINT_ERROR) {
             error_noabort("file '%s' not found", filename.c_str());
