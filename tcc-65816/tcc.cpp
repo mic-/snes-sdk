@@ -2582,28 +2582,28 @@ static void parse_define(void)
 }
 
 
-static TCCState::CachedIncludeIterator search_cached_include(TCCState *state, int type, const char *filename)
+static TCCState::CachedIncludeIterator search_cached_include(TCCState *state, int type, const std::string& filename)
 {
     const auto key = TCCState::CachedIncludeKey(type, filename);
     auto matches = state->cached_includes.equal_range(key);
-    return std::find_if(matches.first, matches.second, [type, filename] (const auto& elem) {
+    return std::find_if(matches.first, matches.second, [type, &filename] (const auto& elem) {
          return elem.second.type == type && elem.second.filename == filename;
     });
 }
 
-static inline void add_cached_include(TCCState *s1, int type, 
-                                      const char *filename, int ifndef_macro)
+static inline void add_cached_include(TCCState *state, int type,
+                                      const std::string& filename, int ifndef_macro)
 {
-    if (search_cached_include(s1, type, filename) != s1->cached_includes.end())
+    if (search_cached_include(state, type, filename) != state->cached_includes.end())
         return;
 #ifdef INC_DEBUG
-    printf("adding cached '%s' %s\n", filename, get_tok_str(ifndef_macro, nullptr).c_str());
+    printf("adding cached '%s' %s\n", filename.c_str(), get_tok_str(ifndef_macro, nullptr).c_str());
 #endif
     CachedInclude cinc;
     cinc.type = type;
     cinc.filename = filename;
     cinc.ifndef_macro = ifndef_macro;
-    s1->cached_includes[TCCState::CachedIncludeKey(type, filename)] = cinc;
+    state->cached_includes[TCCState::CachedIncludeKey(type, filename)] = cinc;
 }
 
 static void pragma_parse(TCCState *s1)
