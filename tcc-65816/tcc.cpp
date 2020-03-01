@@ -10000,30 +10000,22 @@ static const TCCOption tcc_options[] = {
 };
 
 /* convert 'str' into an array of space separated strings */
-static int expand_args(char ***pargv, const char *str)
+static std::vector<std::string> expand_args(const char *str)
 {
-    const char *s1;
-    char **argv, *arg;
-    int argc, len;
+    std::vector<std::string> result;
 
-    argc = 0;
-    argv = NULL;
     for(;;) {
         while (is_space(*str))
             str++;
         if (*str == '\0')
             break;
-        s1 = str;
+        const char* const s1 = str;
         while (*str != '\0' && !is_space(*str))
             str++;
-        len = str - s1;
-        arg = (char*) tcc_malloc(len + 1);
-        memcpy(arg, s1, len);
-        arg[len] = '\0';
-        dynarray_add((void ***)&argv, &argc, arg);
+        const int len = str - s1;
+        result.emplace_back(s1, len);
     }
-    *pargv = argv;
-    return argc;
+    return result;
 }
 
 static std::vector<std::string> files;
@@ -10034,24 +10026,24 @@ static int output_type;
 static int reloc_output;
 static const char *outfile;
 
-int parse_args(TCCState *s, int argc, char **argv)
+int parse_args(TCCState *s, const std::vector<std::string>& args)
 {
     int optind;
     const TCCOption *popt;
     const char *optarg, *p1, *r1;
-    char *r;
+    const char *r;
 
     s->output_format = TCC_OUTPUT_FORMAT_BINARY;
     
     optind = 0;
     while (1) {
-        if (optind >= argc) {
+        if (optind >= args.size()) {
             if (files.empty() && !print_search_dirs)
                 goto show_help;
             else
                 break;
         }
-        r = argv[optind++];
+        r = args[optind++].c_str();
         if (r[0] != '-') {
             /* add a new file */
             files.push_back(r);
@@ -10083,9 +10075,9 @@ int parse_args(TCCState *s, int argc, char **argv)
                 if (*r1 != '\0' || (popt->flags & TCC_OPTION_NOSEP)) {
                     optarg = r1;
                 } else {
-                    if (optind >= argc)
+                    if (optind >= args.size())
                         error("argument to '%s' is missing", r);
-                    optarg = argv[optind++];
+                    optarg = args[optind++].c_str();
                 }
             } else {
                 if (*r1 != '\0')
@@ -10173,11 +10165,9 @@ int parse_args(TCCState *s, int argc, char **argv)
                 break;
             case TCC_OPTION_run:
                 {
-                    int argc1;
-                    char **argv1;
-                    argc1 = expand_args(&argv1, optarg);
-                    if (argc1 > 0) {
-                        parse_args(s, argc1, argv1);
+                    const auto expanded_args = expand_args(optarg);
+                    if (!expanded_args.empty()) {
+                        parse_args(s, expanded_args);
                     }
                     multiple_files = 0;
                     output_type = TCC_OUTPUT_MEMORY;
@@ -10276,7 +10266,11 @@ int main(int argc, char **argv)
     reloc_output = 0;
     print_search_dirs = 0;
 
-    optind = parse_args(s, argc - 1, argv + 1) + 1;
+    std::vector<std::string> args;
+    for (int i = 0; i < argc - 1; ++i) {
+        args.emplace_back(argv[i + 1]);
+    }
+    optind = parse_args(s, args) + 1;
 
     if (print_search_dirs) {
         /* enough for Linux kernel */
