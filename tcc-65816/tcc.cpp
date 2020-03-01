@@ -414,17 +414,12 @@ static struct TCCState *tcc_state;
 static std::string tcc_lib_path = CONFIG_TCCDIR;
 
 static void *tcc_mallocz(unsigned long size);
-static void dynarray_add(void ***ptab, int *nb_ptr, void *data);
 
 struct TCCState {
     Section *find_section(const std::string& name)
     {
-        Section *sec;
-        int i;
-        for(i = 1; i < nb_sections; i++) {
-            sec = sections[i];
-            if (name == sec->name)
-                return sec;
+        for (auto& sec : sections) {
+            if (sec && sec->name == name) return sec;
         }
         /* sections are created as PROGBITS */
         return new_section(name, SHT_PROGBITS, SHF_ALLOC);
@@ -456,8 +451,8 @@ struct TCCState {
 
         /* only add section if not private */
         if (!(sh_flags & SHF_PRIVATE)) {
-            sec->sh_num = nb_sections;
-            dynarray_add((void ***)&sections, &nb_sections, sec);
+            sec->sh_num = sections.size();
+            sections.push_back(sec);
         }
         return sec;
     }
@@ -480,9 +475,8 @@ struct TCCState {
     DLLReference **loaded_dlls;
     int nb_loaded_dlls;
 
-    /* sections */
-    Section **sections;
-    int nb_sections; /* number of sections, including first dummy section */
+    /* sections, first one is a dummy section */
+    std::vector<Section*> sections;
 
     /* got handling */
     Section *got;
@@ -1027,28 +1021,6 @@ static inline void *tcc_realloc(void *ptr, unsigned long size)
 #define free(p) use_tcc_free(p)
 #define malloc(s) use_tcc_malloc(s)
 #define realloc(p, s) use_tcc_realloc(p, s)
-
-static void dynarray_add(void ***ptab, int *nb_ptr, void *data)
-{
-    int nb, nb_alloc;
-    void **pp;
-    
-    nb = *nb_ptr;
-    pp = *ptab;
-    /* every power of two we double array size */
-    if ((nb & (nb - 1)) == 0) {
-        if (!nb)
-            nb_alloc = 1;
-        else
-            nb_alloc = nb * 2;
-        pp = (void**) tcc_realloc(pp, nb_alloc * sizeof(void *));
-        if (!pp)
-            error("memory full");
-        *ptab = pp;
-    }
-    pp[nb++] = data;
-    *nb_ptr = nb;
-}
 
 /* symbol allocator */
 static Sym *__sym_malloc(void)
@@ -9530,7 +9502,7 @@ TCCState *tcc_new(void)
 #endif
 
     /* no section zero */
-    dynarray_add((void ***)&s->sections, &s->nb_sections, NULL);
+    s->sections.push_back(nullptr);
 
     /* create standard sections */
     text_section = s->new_section(".text", SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR);
@@ -9581,9 +9553,9 @@ void tcc_delete(TCCState *state)
     free_section(state->dynsymtab_section->link);
     free_section(state->dynsymtab_section);
 
-    for(i = 1; i <state->nb_sections; i++)
-        free_section(state->sections[i]);
-    tcc_free(state->sections);
+    for (auto& sec : state->sections) {
+        if (sec) free_section(sec);
+    }
     
     /* free loaded dlls array */
     for(i = 0; i < state->nb_loaded_dlls; i++)
@@ -10005,7 +9977,7 @@ static const char *outfile;
 
 int parse_args(TCCState *s, const std::vector<std::string>& args)
 {
-    int optind;
+    size_t optind;
     const TCCOption *popt;
     const char *optarg, *p1, *r1;
     const char *r;

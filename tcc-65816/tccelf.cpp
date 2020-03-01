@@ -320,7 +320,6 @@ static void sort_syms(TCCState *s1, Section *s)
     int nb_syms, i;
     Elf32_Sym *p, *q;
     Elf32_Rel *rel, *rel_end;
-    Section *sr;
     int type, sym_index;
 
     nb_syms = s->data_offset / sizeof(Elf32_Sym);
@@ -355,9 +354,8 @@ static void sort_syms(TCCState *s1, Section *s)
     tcc_free(new_syms);
 
     /* now we modify all the relocations */
-    for(i = 1; i < s1->nb_sections; i++) {
-        sr = s1->sections[i];
-        if (sr->sh_type == SHT_REL && sr->link == s) {
+    for(auto& sr : s1->sections) {
+        if (sr && sr->sh_type == SHT_REL && sr->link == s) {
             rel_end = (Elf32_Rel *)(sr->data.data() + sr->data_offset);
             for(rel = (Elf32_Rel *)sr->data.data();
                 rel < rel_end;
@@ -631,7 +629,7 @@ static void build_got_entries(TCCState *s1)
     int reloc_type, sym_index;
 #endif
 
-    for(i = 1; i < s1->nb_sections; i++) {
+    for(i = 1; i < s1->sections.size(); i++) {
         s = s1->sections[i];
         if (s->sh_type != SHT_REL)
             continue;
@@ -809,9 +807,6 @@ static void tcc_add_runtime(TCCState *s1)
    symbols)) */
 static void tcc_add_linker_symbols(TCCState *s1)
 {
-    int i;
-    Section *s;
-
     add_elf_sym(symtab_section, 
                 text_section->data_offset, 0,
                 ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
@@ -831,8 +826,8 @@ static void tcc_add_linker_symbols(TCCState *s1)
     
     /* add start and stop symbols for sections whose name can be
        expressed in C */
-    for(i = 1; i < s1->nb_sections; i++) {
-        s = s1->sections[i];
+    for(size_t i = 1; i < s1->sections.size(); i++) {
+        Section *s = s1->sections[i];
         if (s->sh_type == SHT_PROGBITS &&
             (s->sh_flags & SHF_ALLOC)) {
             const char *p;
@@ -848,12 +843,12 @@ static void tcc_add_linker_symbols(TCCState *s1)
                     goto next_sec;
                 p++;
             }
-            const auto start_sym_name = string_format("__start_%s", s->name.c_str());
+            const auto start_sym_name = std::string("__start_") + s->name;
             add_elf_sym(symtab_section, 
                         0, 0,
                         ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
                         s->sh_num, start_sym_name);
-            const auto stop_sym_name = string_format("__stop_%s", s->name.c_str());
+            const auto stop_sym_name = std::string("__stop_") + s->name;
             add_elf_sym(symtab_section,
                         s->data_offset, 0,
                         ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
@@ -874,7 +869,7 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
                               const int *section_order)
 {
     Section *s;
-    int i,j, k, size;
+    int j, k, size;
 
     /* include header */
     /* fprintf(f, ".incdir \"" CONFIG_TCCDIR "/include\"\n"); */
@@ -885,7 +880,7 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
     /* local variable size constants; used to be generated as part of the
        function epilog, but WLA DX barfed once in a while about missing
        symbols. putting them at the start of the file works around that. */
-    for(i = 0; i < locals.size(); ++i) {
+    for(size_t i = 0; i < locals.size(); ++i) {
       fprintf(f, ".define __%s_locals %d\n", locals[i].c_str(), localnos[i]);
     }
     
@@ -893,14 +888,14 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
        this not only rewrites the pointers inside sections (with bogus
        data), but, more importantly, saves the names of the symbols we have
        to output later in place of this bogus data in the relocptrs[] array. */
-    for(i=1;i<s1->nb_sections;i++) {
+    for(size_t i=1; i<s1->sections.size(); i++) {
         s = s1->sections[section_order[i]];
         if (s->reloc && s != s1->got)
-                        relocate_section(s1, s);
+            relocate_section(s1, s);
     }
     
     /* output sections */
-    for(i=1;i<s1->nb_sections;i++) {
+    for(size_t i=1; i<s1->sections.size(); i++) {
         s = s1->sections[section_order[i]];
         /* these sections are meaningless when writing plain-text assembler output */        
         if(s->name == ".symtab" ||
@@ -1079,7 +1074,7 @@ int tcc_output_file(TCCState *s1, const char *filename)
     FILE *f;
     int fd, mode, ret;
     int *section_order;
-    int shnum, i, phnum, file_offset, offset, size, j, tmp, sh_order_index, k;
+    int shnum, phnum, file_offset, offset, size, j, tmp, sh_order_index, k;
     unsigned long addr;
     Section *strsec, *s;
     Elf32_Shdr shdr, *sh;
@@ -1249,7 +1244,7 @@ int tcc_output_file(TCCState *s1, const char *filename)
             build_got_entries(s1);
         
             /* add a list of needed dlls */
-            for(i = 0; i < s1->nb_loaded_dlls; i++) {
+            for(auto i = 0; i < s1->nb_loaded_dlls; i++) {
                 DLLReference *dllref = s1->loaded_dlls[i];
                 if (dllref->level == 0)
                     put_dt(dynamic, DT_NEEDED, put_elf_str(dynstr, dllref->name));
@@ -1275,7 +1270,7 @@ int tcc_output_file(TCCState *s1, const char *filename)
     put_elf_str(strsec, "");
     
     /* compute number of sections */
-    shnum = s1->nb_sections;
+    shnum = s1->sections.size();
 
     /* this array is used to reorder sections in the output file */
     section_order = (int*) tcc_malloc(sizeof(int) * shnum);
@@ -1303,7 +1298,7 @@ int tcc_output_file(TCCState *s1, const char *filename)
        section should be output */
     /* NOTE: the strsec section comes last, so its size is also
        correct ! */
-    for(i = 1; i < s1->nb_sections; i++) {
+    for(size_t i = 1; i < s1->sections.size(); i++) {
         s = s1->sections[i];
         s->sh_name = put_elf_str(strsec, s->name);
         /* when generating a DLL, we include relocations but we may
@@ -1315,7 +1310,7 @@ int tcc_output_file(TCCState *s1, const char *filename)
         } else if (do_debug || 
             file_type == TCC_OUTPUT_OBJ || 
             (s->sh_flags & SHF_ALLOC) ||
-            i == (s1->nb_sections - 1)) {
+            i == (s1->sections.size() - 1)) {
             /* we output all sections if debug or object file */
             s->sh_size = s->data_offset;
         }
@@ -1371,7 +1366,7 @@ int tcc_output_file(TCCState *s1, const char *filename)
                relocations, progbits, nobits */
             /* XXX: do faster and simpler sorting */
             for(k = 0; k < 5; k++) {
-                for(i = 1; i < s1->nb_sections; i++) {
+                for(size_t i = 1; i < s1->sections.size(); i++) {
                     s = s1->sections[i];
                     /* compute if section should be included */
                     if (j == 0) {
@@ -1535,7 +1530,7 @@ int tcc_output_file(TCCState *s1, const char *filename)
     }
 
     /* all other sections come after */
-    for(i = 1; i < s1->nb_sections; i++) {
+    for(size_t i = 1; i < s1->sections.size(); i++) {
         s = s1->sections[i];
         if (phnum > 0 && (s->sh_flags & SHF_ALLOC))
             continue;
@@ -1609,7 +1604,7 @@ int tcc_output_file(TCCState *s1, const char *filename)
         fwrite(phdr, 1, phnum * sizeof(Elf32_Phdr), f);
         offset = sizeof(Elf32_Ehdr) + phnum * sizeof(Elf32_Phdr);
 
-        for(i=1;i<s1->nb_sections;i++) {
+        for(size_t i=1; i<s1->sections.size(); i++) {
             s = s1->sections[section_order[i]];
             if (s->sh_type != SHT_NOBITS) {
                 while (offset < s->sh_offset) {
@@ -1628,7 +1623,7 @@ int tcc_output_file(TCCState *s1, const char *filename)
             offset++;
         }
     
-        for(i=0;i<s1->nb_sections;i++) {
+        for(size_t i=0; i<s1->sections.size(); i++) {
             sh = &shdr;
             memset(sh, 0, sizeof(Elf32_Shdr));
             s = s1->sections[i];
