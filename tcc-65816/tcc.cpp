@@ -866,7 +866,7 @@ static void *section_ptr_add(Section *sec, unsigned long size);
 static void put_extern_sym(Sym *sym, Section *section, 
                            unsigned long value, unsigned long size);
 static void greloc(Section *s, Sym *sym, unsigned long addr, int type);
-static int put_elf_str(Section *s, const char *sym);
+static int put_elf_str(Section *s, const std::string& sym);
 static int put_elf_sym(Section *s, 
                        unsigned long value, unsigned long size,
                        int info, int other, int shndx, const char *name);

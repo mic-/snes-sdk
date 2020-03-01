@@ -18,15 +18,12 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-static int put_elf_str(Section *s, const char *sym)
+static int put_elf_str(Section *s, const std::string& sym)
 {
-    int offset, len;
-    char *ptr;
-
-    len = strlen(sym) + 1;
-    offset = s->data_offset;
-    ptr = (char*) section_ptr_add(s, len);
-    memcpy(ptr, sym, len);
+    const auto len = sym.length() + 1;
+    int offset = s->data_offset;
+    char *ptr = (char*) section_ptr_add(s, len);
+    memcpy(ptr, sym.c_str(), len);
     return offset;
 }
 
@@ -1307,7 +1304,7 @@ int tcc_output_file(TCCState *s1, const char *filename)
        correct ! */
     for(i = 1; i < s1->nb_sections; i++) {
         s = s1->sections[i];
-        s->sh_name = put_elf_str(strsec, s->name.c_str());
+        s->sh_name = put_elf_str(strsec, s->name);
         /* when generating a DLL, we include relocations but we may
            patch them */
         if (file_type == TCC_OUTPUT_DLL && 
