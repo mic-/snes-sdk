@@ -2,6 +2,7 @@
  *  WDC 65816 code generator for TCC
  * 
  *  Copyright (c) 2007 Ulrich Hecht
+ *  Modified 2020 Mic
  *
  *  Based on arm-gen.c by Daniel Glöckner
  *

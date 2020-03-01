@@ -2,6 +2,7 @@
  *  ELF file handling for TCC
  * 
  *  Copyright (c) 2001-2004 Fabrice Bellard
+ *  Modified 2020 Mic
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
