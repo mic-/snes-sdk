@@ -856,7 +856,7 @@ void lexpand_nr(void);
 static void vpush_global_sym(CType *type, int v);
 void vset(CType *type, int r, int v);
 std::string type_to_str(CType *type, const char *varstr);
-std::string get_tok_str(int v, CValue *cv);
+std::string get_tok_str(int v, CValue *cv = nullptr);
 static Sym *get_sym_ref(CType *type, Section *sec, 
                         unsigned long offset, unsigned long size);
 static Sym *external_global_sym(int v, CType *type, int r);
@@ -1118,7 +1118,7 @@ static void put_extern_sym2(Sym *sym, Section *section,
         else
             sym_bind = STB_GLOBAL;
         
-        name = get_tok_str(sym->v, NULL);
+        name = get_tok_str(sym->v);
 #ifdef CONFIG_TCC_BCHECK
         if (do_bounds_check) {
             /* XXX: avoid doing that for statics ? */
@@ -2408,10 +2408,10 @@ static void label_pop(Sym **ptop, Sym *slast)
     for(s = *ptop; s != slast; s = s1) {
         s1 = s->prev;
         if (s->r == LABEL_DECLARED) {
-            warning("label '%s' declared but not used", get_tok_str(s->v, nullptr).c_str());
+            warning("label '%s' declared but not used", get_tok_str(s->v).c_str());
         } else if (s->r == LABEL_FORWARD) {
                 error("label '%s' used but not defined",
-                      get_tok_str(s->v, nullptr).c_str());
+                      get_tok_str(s->v).c_str());
         } else {
             if (s->c) {
                 /* define corresponding symbol. A size of
@@ -2531,7 +2531,7 @@ static void parse_define(void)
     }
     tok_str_add(&str, 0);
 #ifdef PP_DEBUG
-    printf("define %s %d: ", get_tok_str(v, nullptr).c_str(), t);
+    printf("define %s %d: ", get_tok_str(v).c_str(), t);
     tok_print(str.str);
 #endif
     define_push(v, t, str.str, first);
@@ -2553,7 +2553,7 @@ static inline void add_cached_include(TCCState *state, int type,
     if (search_cached_include(state, type, filename) != state->cached_includes.end())
         return;
 #ifdef INC_DEBUG
-    printf("adding cached '%s' %s\n", filename.c_str(), get_tok_str(ifndef_macro, nullptr).c_str());
+    printf("adding cached '%s' %s\n", filename.c_str(), get_tok_str(ifndef_macro).c_str());
 #endif
     CachedInclude cinc;
     cinc.type = type;
@@ -2773,7 +2773,7 @@ static void preprocess(int is_bof)
         if (is_bof) {
             if (c) {
 #ifdef INC_DEBUG
-                printf("#ifndef %s\n", get_tok_str(tok, nullptr).c_str());
+                printf("#ifndef %s\n", get_tok_str(tok).c_str());
 #endif
                 file->ifndef_macro = tok;
             }
@@ -3358,7 +3358,7 @@ static inline void next_nomacro1(void)
                    start of file */
                 if (tok_flags & TOK_FLAG_ENDIF) {
 #ifdef INC_DEBUG
-                    printf("#endif %s\n", get_tok_str(file->ifndef_macro_saved, NULL).c_str());
+                    printf("#endif %s\n", get_tok_str(file->ifndef_macro_saved).c_str());
 #endif
                     add_cached_include(s1, file->inc_type, file->inc_filename,
                                        file->ifndef_macro_saved);
@@ -3835,11 +3835,25 @@ static int *macro_arg_subst(Sym **nested_list, int *macro_str, Sym *args)
     return str.str;
 }
 
-static char const ab_month_name[12][4] =
+static const std::array<const std::string, 12> ab_month_name =
 {
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 };
+
+// ToDo: Could this be done without the CValue and CString?
+static void tok_str_add(TokenString *tok_str, const int token, const std::string& str)
+{
+    CValue cval;
+    CString cstr;
+
+    cstr_new(&cstr);
+    cstr_cat(&cstr, str.c_str());
+    cstr_ccat(&cstr, '\0');
+    cval.cstr = &cstr;
+    tok_str_add2(tok_str, token, &cval);
+    cstr_free(&cstr);
+}
 
 /* do macro substitution of current token with macro 's' and add
    result to (tok_str,tok_len). 'nested_list' is the list of all
@@ -3851,44 +3865,28 @@ static int macro_subst_tok(TokenString *tok_str,
     Sym *args, *sa, *sa1;
     int mstr_allocated, parlevel, *mstr, t, t1;
     TokenString str;
-    const char *cstrval;
-    CValue cval;
-    CString cstr;
-    char buf[32];
     
     /* if symbol is a macro, prepare substitution */
     /* special macros */
     if (tok == TOK___LINE__) {
-        snprintf(buf, sizeof(buf), "%d", file->line_num);
-        cstrval = buf;
-        t1 = TOK_PPNUM;
-        goto add_cstr1;
+        tok_str_add(tok_str, TOK_PPNUM, string_format("%d", file->line_num));
     } else if (tok == TOK___FILE__) {
-        cstrval = file->filename.c_str();
-        goto add_cstr;
+        tok_str_add(tok_str, TOK_STR, file->filename);
     } else if (tok == TOK___DATE__ || tok == TOK___TIME__) {
         time_t ti;
         struct tm *tm;
 
         time(&ti);
         tm = localtime(&ti);
+        std::string date_time_str;
         if (tok == TOK___DATE__) {
-            snprintf(buf, sizeof(buf), "%s %2d %d", 
-                     ab_month_name[tm->tm_mon], tm->tm_mday, tm->tm_year + 1900);
+            date_time_str = string_format("%s %2d %d",
+                     ab_month_name[tm->tm_mon].c_str(), tm->tm_mday, tm->tm_year + 1900);
         } else {
-            snprintf(buf, sizeof(buf), "%02d:%02d:%02d", 
+            date_time_str = string_format("%02d:%02d:%02d",
                      tm->tm_hour, tm->tm_min, tm->tm_sec);
         }
-        cstrval = buf;
-    add_cstr:
-        t1 = TOK_STR;
-    add_cstr1:
-        cstr_new(&cstr);
-        cstr_cat(&cstr, cstrval);
-        cstr_ccat(&cstr, '\0');
-        cval.cstr = &cstr;
-        tok_str_add2(tok_str, t1, &cval);
-        cstr_free(&cstr);
+        tok_str_add(tok_str, TOK_STR, date_time_str);
     } else {
         mstr = (int *)s->c;
         mstr_allocated = 0;
@@ -3933,7 +3931,7 @@ static int macro_subst_tok(TokenString *tok_str,
                     break;
                 if (!sa)
                     error("macro '%s' used with too many args",
-                          get_tok_str(s->v, nullptr).c_str());
+                          get_tok_str(s->v).c_str());
                 tok_str_new(&str);
                 parlevel = 0;
                 /* NOTE: non zero sa->t indicates VA_ARGS */
@@ -3965,7 +3963,7 @@ static int macro_subst_tok(TokenString *tok_str,
             }
             if (sa) {
                 error("macro '%s' used with too few args",
-                      get_tok_str(s->v, nullptr).c_str());
+                      get_tok_str(s->v).c_str());
             }
 
             /* now subst each arg */
@@ -4319,7 +4317,7 @@ static Sym *external_sym(int v, CType *type, int r)
     } else {
         if (!is_compatible_types(&s->type, type))
             error("incompatible types for redefinition of '%s'", 
-                  get_tok_str(v, nullptr).c_str());
+                  get_tok_str(v).c_str());
     }
     return s;
 }
@@ -5473,7 +5471,7 @@ static void check_comparison_pointer_types(SValue *p1, SValue *p2, int op)
         type2 = pointed_type(type2);
     } else if (bt2 != VT_FUNC) { 
     invalid_operands:
-        error("invalid operands to binary %s", get_tok_str(op, nullptr).c_str());
+        error("invalid operands to binary %s", get_tok_str(op).c_str());
     }
     if ((type1->t & VT_BTYPE) == VT_VOID || 
         (type2->t & VT_BTYPE) == VT_VOID)
@@ -6110,7 +6108,7 @@ std::string type_to_str(CType *type, const char *varstr)
         if (v >= SYM_FIRST_ANOM)
             buf += "<anonymous>";
         else
-            buf += get_tok_str(v, nullptr);
+            buf += get_tok_str(v);
         break;
     case VT_FUNC:
         s = type->ref;
@@ -6464,7 +6462,7 @@ static void parse_attribute(AttributeDef *ad)
             break;
         default:
             if (tcc_state->warn_unsupported)
-                warning("'%s' attribute ignored", get_tok_str(t, nullptr).c_str());
+                warning("'%s' attribute ignored", get_tok_str(t).c_str());
             /* skip parameters */
             /* XXX: skip parenthesis too */
             if (tok == '(') {
@@ -6564,7 +6562,7 @@ static void struct_decl(CType *type, int u)
                         if ((type1.t & VT_BTYPE) == VT_FUNC ||
                             (type1.t & (VT_TYPEDEF | VT_STATIC | VT_EXTERN | VT_INLINE)))
                             error("invalid type for '%s'", 
-                                  get_tok_str(v, nullptr).c_str());
+                                  get_tok_str(v).c_str());
                     }
                     if (tok == ':') {
                         next();
@@ -6572,10 +6570,10 @@ static void struct_decl(CType *type, int u)
                         /* XXX: handle v = 0 case for messages */
                         if (bit_size < 0)
                             error("negative width in bit-field '%s'", 
-                                  get_tok_str(v, nullptr).c_str());
+                                  get_tok_str(v).c_str());
                         if (v && bit_size == 0)
                             error("zero width for bit-field '%s'", 
-                                  get_tok_str(v, nullptr).c_str());
+                                  get_tok_str(v).c_str());
                     }
                     size = type_size(&type1, &align);
                     if(size < 0) {
@@ -6604,7 +6602,7 @@ static void struct_decl(CType *type, int u)
                         bsize = size * 8;
                         if (bit_size > bsize) {
                             error("width of '%s' exceeds its type",
-                                  get_tok_str(v, nullptr).c_str());
+                                  get_tok_str(v).c_str());
                         } else if (bit_size == bsize) {
                             /* no need for bit fields */
                             bit_pos = 0;
@@ -7393,12 +7391,12 @@ static void unary(void)
         s = sym_find(t);
         if (!s) {
             if (tok != '(')
-                error("'%s' undeclared", get_tok_str(t, nullptr).c_str());
+                error("'%s' undeclared", get_tok_str(t).c_str());
             /* for simple function calls, we tolerate undeclared
                external reference to int() function */
             if (tcc_state->warn_implicit_function_declaration)
                 warning("implicit declaration of function '%s'",
-                        get_tok_str(t, nullptr).c_str());
+                        get_tok_str(t).c_str());
             s = external_global_sym(t, &func_old_type, 0); 
         }
         if ((s->type.t & (VT_STATIC | VT_INLINE | VT_BTYPE)) ==
@@ -8205,13 +8203,13 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
             s = label_find(b);
             if (s) {
                 if (s->r == LABEL_DEFINED)
-                    error("duplicate label '%s'", get_tok_str(s->v, nullptr).c_str());
+                    error("duplicate label '%s'", get_tok_str(s->v).c_str());
 #ifdef TCC_TARGET_816
                 /* 816 code generator needs to know the names of labels, but only
                    gets addresses; using label_workaround to both indicate that
                    this is a label, and what its name is. gsym_addr() resets
                    label_workaround to NULL when done. */
-                label_workaround = get_tok_str(s->v, nullptr);
+                label_workaround = get_tok_str(s->v);
                 gsym((uintptr_t)s->next);
 #endif
                 s->r = LABEL_DEFINED;
@@ -8219,7 +8217,7 @@ static void block(int *bsym, int *csym, int *case_sym, int *def_sym,
                 s = label_push(&global_label_stack, b, LABEL_DEFINED);
 #ifdef TCC_TARGET_816
                 /* see above */
-                label_workaround = get_tok_str(s->v, nullptr);
+                label_workaround = get_tok_str(s->v);
                 gsym((uintptr_t)s->next); /* without this, labels end up in the wrong place (too late) */
 #endif
             }
@@ -8807,7 +8805,7 @@ static void decl_initializer_alloc(CType *type, AttributeDef *ad, int r,
             if (sym) {
                 if (!is_compatible_types(&sym->type, type))
                     error("incompatible types for redefinition of '%s'", 
-                          get_tok_str(v, nullptr).c_str());
+                          get_tok_str(v).c_str());
                 if (sym->type.t & VT_EXTERN) {
                     /* if the variable is extern, it was not allocated */
                     sym->type.t &= ~VT_EXTERN;
@@ -8962,11 +8960,11 @@ static void func_decl_list(Sym *func_sym)
                     s = s->next;
                 }
                 error("declaration for parameter '%s' but no such parameter",
-                      get_tok_str(v, nullptr).c_str());
+                      get_tok_str(v).c_str());
             found:
                 /* check that no storage specifier except 'register' was given */
                 if (type.t & VT_STORAGE)
-                    error("storage class specified for '%s'", get_tok_str(v, nullptr).c_str());
+                    error("storage class specified for '%s'", get_tok_str(v).c_str());
                 convert_parameter_type(&type);
                 /* we can add the type (NOTE: it could be local to the function) */
                 s->type = type;
@@ -8988,7 +8986,7 @@ static void gen_function(Sym *sym)
     ind = cur_text_section->data_offset;
     /* NOTE: we patch the symbol size later */
     put_extern_sym(sym, cur_text_section, ind, 0);
-    funcname = get_tok_str(sym->v, nullptr);
+    funcname = get_tok_str(sym->v);
     func_ind = ind;
     /* put debug symbol */
     if (do_debug)
@@ -9138,7 +9136,7 @@ static void decl(int l)
                     if (!is_compatible_types(&sym->type, &type)) {
                     func_error1:
                         error("incompatible types for redefinition of '%s'", 
-                              get_tok_str(v, nullptr).c_str());
+                              get_tok_str(v).c_str());
                     }
                     /* if symbol is already defined, then put complete type */
                     sym->type = type;
