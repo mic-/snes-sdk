@@ -137,9 +137,11 @@ std::string get_sym_str(Sym* sym)
 
 static void emit_code(const std::string& code)
 {
-  cur_text_section->data.reserve(cur_text_section->data.size() + code.length());
-  cur_text_section->data.insert(cur_text_section->data.end(), code.cbegin(), code.cend());
-  ind += code.length();
+  if (!code.empty() && (code[0] != ';' || tcc_state->emit_internals)) {
+    cur_text_section->data.reserve(cur_text_section->data.size() + code.length());
+    cur_text_section->data.insert(cur_text_section->data.end(), code.cbegin(), code.cend());
+    ind += code.length();
+  }
 }
 
 #define pr(x...) do { emit_code(string_format(x)); } while(0)

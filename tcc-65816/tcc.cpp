@@ -505,7 +505,11 @@ struct TCCState {
     /* if true, only link in referenced objects from archive */
     int alacarte_link;
 
+    /* if true, constants will be allocated as in versions <= 0.9.23 */
     bool use_old_const_behavior = false;
+
+    /* if true, emit comments with compiler-internal state information into the generated assembly code */
+    bool emit_internals = false;
 
     /* address of text section */
     unsigned long text_addr;
@@ -9853,10 +9857,12 @@ void help(void)
            "  -o outfile  set output filename\n"
            "  -Bdir       set tcc internal library path\n"
            "  -bench      output compilation statistics\n"
- 	   "  -run        run compiled source\n"
+           "  -run        run compiled source\n"
            "  -fflag      set or reset (with 'no-' prefix) 'flag' (see man page)\n"
            "  -Wwarning   set or reset (with 'no-' prefix) 'warning' (see man page)\n"
            "  -w          disable all warnings\n"
+           "  --emit-internals\n"
+           "  --ram-constants\n"
            "Preprocessor options:\n"
            "  -Idir       add include path 'dir'\n"
            "  -Dsym[=val] define 'sym' with value 'val'\n"
@@ -9916,6 +9922,7 @@ enum {
     TCC_OPTION_v,
     TCC_OPTION_w,
     TCC_OPTION_pipe,
+    TCC_OPTION_emit_internals,
     TCC_OPTION_ram_constants,
 };
 
@@ -9952,6 +9959,7 @@ static const TCCOption tcc_options[] = {
     { "v", TCC_OPTION_v, 0 },
     { "w", TCC_OPTION_w, 0 },
     { "pipe", TCC_OPTION_pipe, 0},
+    { "-emit-internals", TCC_OPTION_emit_internals, 0},
     { "-ram-constants", TCC_OPTION_ram_constants, 0},
     { NULL },
 };
@@ -10178,6 +10186,9 @@ int parse_args(TCCState *s, const std::vector<std::string>& args)
                 break;
             case TCC_OPTION_ram_constants:
                 s->use_old_const_behavior = true;
+                break;
+            case TCC_OPTION_emit_internals:
+                s->emit_internals = true;
                 break;
             default:
                 if (s->warn_unsupported) {
