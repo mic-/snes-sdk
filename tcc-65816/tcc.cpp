@@ -505,6 +505,8 @@ struct TCCState {
     /* if true, only link in referenced objects from archive */
     int alacarte_link;
 
+    bool use_old_const_behavior = false;
+
     /* address of text section */
     unsigned long text_addr;
     int has_text_addr;
@@ -8793,9 +8795,8 @@ static void decl_initializer_alloc(CType *type, AttributeDef *ad, int r,
             vset(type, r, addr);
         }
     } else {
-        Sym *sym;
+        Sym *sym = NULL;
 
-        sym = NULL;
         if (v && scope == VT_CONST) {
             /* see if the symbol was already defined */
             sym = sym_find(v);
@@ -8829,7 +8830,12 @@ static void decl_initializer_alloc(CType *type, AttributeDef *ad, int r,
         /* allocate symbol in corresponding section */
         sec = ad->section;
         if (!sec) {
-            if (has_init == 2)
+            const bool is_initializer_for_const = type->ref && (type->ref->type.t & VT_CONSTANT);
+            const bool is_ptr = (type->t & VT_PTR) && !(type->t & VT_ARRAY);
+            const bool force_rodata = (scope & VT_CONST) == VT_CONST &&
+                                      is_initializer_for_const &&
+                                      (!is_ptr || (type->t & VT_CONSTANT)); // only put pointers in rodata if the pointer itself is constant
+            if (has_init == 2 || (force_rodata && !tcc_state->use_old_const_behavior))
                 sec = rodata_section;
             else
             if (has_init)
@@ -8837,7 +8843,7 @@ static void decl_initializer_alloc(CType *type, AttributeDef *ad, int r,
             else if (tcc_state->nocommon)
                 sec = bss_section;
         }
-        //fprintf(stderr,"SECS %s\n",sec==data_section?"data":sec==bss_section?"bss":sec==rodata_section?"rodata":"unknown");
+        //fprintf(stderr,"has_init = %d, type = 0x%x, ref type = 0x%x, scope 0x%x, SECS %s\n", has_init, type->t, type->ref->type.t, scope, sec==data_section?"data":sec==bss_section?"bss":sec==rodata_section?"rodata":"unknown");
         if (sec) {
             data_offset = sec->data_offset;
             data_offset = (data_offset + align - 1) & -align;
@@ -9910,6 +9916,7 @@ enum {
     TCC_OPTION_v,
     TCC_OPTION_w,
     TCC_OPTION_pipe,
+    TCC_OPTION_ram_constants,
 };
 
 static const TCCOption tcc_options[] = {
@@ -9945,6 +9952,7 @@ static const TCCOption tcc_options[] = {
     { "v", TCC_OPTION_v, 0 },
     { "w", TCC_OPTION_w, 0 },
     { "pipe", TCC_OPTION_pipe, 0},
+    { "-ram-constants", TCC_OPTION_ram_constants, 0},
     { NULL },
 };
 
@@ -10167,6 +10175,9 @@ int parse_args(TCCState *s, const std::vector<std::string>& args)
                 break;
             case TCC_OPTION_O:
                 s->optimize = 1;
+                break;
+            case TCC_OPTION_ram_constants:
+                s->use_old_const_behavior = true;
                 break;
             default:
                 if (s->warn_unsupported) {
