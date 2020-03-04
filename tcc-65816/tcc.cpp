@@ -1766,15 +1766,15 @@ static void handle_stray(void)
 static int handle_stray1(uint8_t *p)
 {
     int c;
+    bool parse_stray = true;
 
     if (p >= file->buf_end) {
         file->buf_ptr = p;
         c = handle_eob();
         p = file->buf_ptr;
-        if (c == '\\')
-            goto parse_stray;
-    } else {
-    parse_stray:
+        parse_stray = (c == '\\');
+    }
+    if (parse_stray) {
         file->buf_ptr = p;
         ch = *p;
         handle_stray();
@@ -1958,7 +1958,6 @@ static uint8_t *parse_pp_string(uint8_t *p,
             c = handle_eob();
             p = file->buf_ptr;
             if (c == CH_EOF) {
-            unterminated_string:
                 /* XXX: indicate line number of start of string */
                 error("missing terminating %c character", sep);
             } else if (c == '\\') {
@@ -1974,7 +1973,7 @@ static uint8_t *parse_pp_string(uint8_t *p,
                     file->line_num++;
                     p++;
                 } else if (c == CH_EOF) {
-                    goto unterminated_string;
+                    error("missing terminating %c character", sep);
                 } else {
                     if (str) {
                         cstr_ccat(str, '\\');
