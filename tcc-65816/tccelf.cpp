@@ -823,38 +823,28 @@ static void tcc_add_linker_symbols(TCCState *s1)
     add_init_array_defines(s1, ".preinit_array");
     add_init_array_defines(s1, ".init_array");
     add_init_array_defines(s1, ".fini_array");
-    
+
     /* add start and stop symbols for sections whose name can be
        expressed in C */
-    for(size_t i = 1; i < s1->sections.size(); i++) {
-        Section *s = s1->sections[i];
-        if (s->sh_type == SHT_PROGBITS &&
-            (s->sh_flags & SHF_ALLOC)) {
-            const char *p;
-            int ch;
+    for(Section *sec : s1->sections) {
+        if (sec &&
+            sec->sh_type == SHT_PROGBITS &&
+            (sec->sh_flags & SHF_ALLOC)) {
 
-            /* check if section name can be expressed in C */
-            p = s->name.c_str();
-            for(;;) {
-                ch = *p;
-                if (!ch)
-                    break;
-                if (!isid(ch) && !isnum(ch))
-                    goto next_sec;
-                p++;
+            const bool section_name_ok = std::find_if(sec->name.cbegin(), sec->name.cend(), [] (const char c) { return !isnum(c) && !isid(c); }) == sec->name.cend();
+            if (section_name_ok) {
+                const auto start_sym_name = std::string("__start_") + sec->name;
+                add_elf_sym(symtab_section,
+                            0, 0,
+                            ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
+                            sec->sh_num, start_sym_name);
+                const auto stop_sym_name = std::string("__stop_") + sec->name;
+                add_elf_sym(symtab_section,
+                            sec->data_offset, 0,
+                            ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
+                            sec->sh_num, stop_sym_name);
             }
-            const auto start_sym_name = std::string("__start_") + s->name;
-            add_elf_sym(symtab_section, 
-                        0, 0,
-                        ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
-                        s->sh_num, start_sym_name);
-            const auto stop_sym_name = std::string("__stop_") + s->name;
-            add_elf_sym(symtab_section,
-                        s->data_offset, 0,
-                        ELF32_ST_INFO(STB_GLOBAL, STT_NOTYPE), 0,
-                        s->sh_num, stop_sym_name);
         }
-    next_sec: ;
     }
 }
 
