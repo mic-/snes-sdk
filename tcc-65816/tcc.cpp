@@ -4113,7 +4113,7 @@ static void macro_subst(TokenString *tok_str, Sym **nested_list,
     Sym *s;
     int *macro_str1;
     const int *ptr;
-    int t, ret;
+    int t;
     CValue cval;
     struct macro_level ml;
     
@@ -4122,6 +4122,7 @@ static void macro_subst(TokenString *tok_str, Sym **nested_list,
     macro_str1 = macro_twosharps(ptr);
     if (macro_str1) 
         ptr = macro_str1;
+
     while (1) {
         /* NOTE: ptr == NULL can only happen if tokens are read from
            file stream due to a macro function call */
@@ -4131,27 +4132,28 @@ static void macro_subst(TokenString *tok_str, Sym **nested_list,
         if (t == 0)
             break;
         s = define_find(t);
+        bool no_subst = true;
         if (s != NULL) {
             /* if nested substitution, do nothing */
-            if (sym_find2(*nested_list, t))
-                goto no_subst;
-            ml.p = macro_ptr;
-            if (can_read_stream)
-                ml.prev = *can_read_stream, *can_read_stream = &ml;
-            macro_ptr = (int *)ptr;
-            tok = t;
-            ret = macro_subst_tok(tok_str, nested_list, s, can_read_stream);
-            ptr = (int *)macro_ptr;
-            macro_ptr = ml.p;
-            if (can_read_stream && *can_read_stream == &ml)
+            if (!sym_find2(*nested_list, t)) {
+                ml.p = macro_ptr;
+                if (can_read_stream)
+                    ml.prev = *can_read_stream, *can_read_stream = &ml;
+                macro_ptr = (int *)ptr;
+                tok = t;
+                const int ret = macro_subst_tok(tok_str, nested_list, s, can_read_stream);
+                ptr = (int *)macro_ptr;
+                macro_ptr = ml.p;
+                if (can_read_stream && *can_read_stream == &ml)
                     *can_read_stream = ml.prev;
-            if (ret != 0)
-                goto no_subst;
-        } else {
-        no_subst:
+                no_subst = (ret != 0);
+            }
+        }
+        if (no_subst) {
             tok_str_add2(tok_str, t, &cval);
         }
     }
+
     if (macro_str1)
         tok_str_free(macro_str1);
 }
