@@ -4980,6 +4980,16 @@ void gv_dup(void)
     }
 }
 
+static void gen_long_arithmetic_func_call(const int func)
+{
+    vpush_global_sym(&func_old_type, func);
+    vrott(3);
+    gfunc_call(2);
+    vpushi(0);
+    vtop->r = REG_IRET;
+    vtop->r2 = REG_LRET;
+}
+
 /* generate CPU independent (unsigned) long long operations */
 void gen_opl(int op)
 {
@@ -4990,24 +5000,16 @@ void gen_opl(int op)
     switch(op) {
     case '/':
     case TOK_PDIV:
-        func = TOK___divdi3;
-        goto gen_func;
+        gen_long_arithmetic_func_call(TOK___divdi3);
+        break;
     case TOK_UDIV:
-        func = TOK___udivdi3;
-        goto gen_func;
+        gen_long_arithmetic_func_call(TOK___udivdi3);
+        break;
     case '%':
-        func = TOK___moddi3;
-        goto gen_func;
+        gen_long_arithmetic_func_call(TOK___moddi3);
+        break;
     case TOK_UMOD:
-        func = TOK___umoddi3;
-    gen_func:
-        /* call generic long long function */
-        vpush_global_sym(&func_old_type, func);
-        vrott(3);
-        gfunc_call(2);
-        vpushi(0);
-        vtop->r = REG_IRET;
-        vtop->r2 = REG_LRET;
+        gen_long_arithmetic_func_call(TOK___umoddi3);
         break;
     case '^':
     case '&':
@@ -5148,14 +5150,14 @@ void gen_opl(int op)
             /* XXX: should provide a faster fallback on x86 ? */
             switch(op) {
             case TOK_SAR:
-                func = TOK___sardi3;
-                goto gen_func;
+                gen_long_arithmetic_func_call(TOK___sardi3);
+                break;
             case TOK_SHR:
-                func = TOK___shrdi3;
-                goto gen_func;
+                gen_long_arithmetic_func_call(TOK___shrdi3);
+                break;
             case TOK_SHL:
-                func = TOK___shldi3;
-                goto gen_func;
+                gen_long_arithmetic_func_call(TOK___shldi3);
+                break;
             }
         }
         break;
