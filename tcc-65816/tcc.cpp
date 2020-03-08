@@ -192,7 +192,7 @@ typedef struct SValue {
 /* symbol management */
 typedef struct Sym {
     int v;    /* symbol token */
-    long r;    /* associated register */
+    uintptr_t r;    /* associated register */
     uintptr_t c;    /* associated number */
     CType type;    /* associated type */
     struct Sym *next; /* next related symbol */
@@ -357,7 +357,8 @@ static Section *stab_section, *stabstr_section;
    rsym: return symbol
    anon_sym: anonymous symbol index
 */
-static int rsym, anon_sym, ind, loc;
+static int rsym, anon_sym, loc;
+uintptr_t ind;
 /* expression generation modifiers */
 static int const_wanted; /* true if constant wanted */
 static int nocode_wanted; /* true if no code generation wanted for an expression */
@@ -2613,7 +2614,7 @@ static void preprocess(int is_bof)
 {
     TCCState *s1 = tcc_state;
     int size, i, c, n, saved_parse_flags;
-    char buf[1024], *q, *p;
+    char buf[1024], *q;
     char buf1[1024];
     BufferedFile *f;
     Sym *s;
@@ -4994,7 +4995,6 @@ static void gen_long_arithmetic_func_call(const int func)
 void gen_opl(int op)
 {
     int t, a, b, op1, c, i;
-    int func;
     SValue tmp;
 
     switch(op) {
@@ -8709,7 +8709,8 @@ static void decl_initializer(CType *type, Section *sec, unsigned long c,
 static void decl_initializer_alloc(CType *type, AttributeDef *ad, int r, 
                                    int has_init, int v, int scope)
 {
-    int size, align, addr, data_offset;
+    int size, align, addr;
+    size_t data_offset;
     int level;
     ParseState saved_parse_state;
     TokenString init_str;
@@ -9433,7 +9434,6 @@ TCCState *tcc_new(void)
 {
     const char *p, *r;
     TCCState *s;
-    TokenSym *ts;
     int i, c;
 
     s = new TCCState{};
@@ -9443,7 +9443,7 @@ TCCState *tcc_new(void)
     s->output_type = TCC_OUTPUT_MEMORY;
 
     /* init isid table */
-    for(i=0;i<256;i++)
+    for(i=0; i<256; i++)
         isidnum_table[i] = isid(i) || isnum(i);
 
     /* add all tokens */
@@ -9459,7 +9459,7 @@ TCCState *tcc_new(void)
             if (c == '\0')
                 break;
         }
-        ts = tok_alloc(p, r - p - 1);
+        (void) tok_alloc(p, r - p - 1);
         p = r;
     }
 

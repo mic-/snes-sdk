@@ -150,42 +150,6 @@ static int find_elf_sym(Section *s, const char *name)
     return 0;
 }
 
-/* return elf symbol value or error */
-int tcc_get_symbol(TCCState *s, unsigned long *pval, const char *name)
-{
-    int sym_index;
-    Elf32_Sym *sym;
-    
-    sym_index = find_elf_sym(symtab_section, name);
-    if (!sym_index)
-        return -1;
-    sym = &((Elf32_Sym *)symtab_section->data.data())[sym_index];
-    *pval = sym->st_value;
-    return 0;
-}
-
-/* return elf symbol value or error */
-Elf32_Sym* tcc_really_get_symbol(TCCState *s, unsigned long *pval, const char *name)
-{
-    int sym_index;
-    Elf32_Sym *sym;
-    
-    sym_index = find_elf_sym(symtab_section, name);
-    if (!sym_index)
-        return NULL;
-    sym = &((Elf32_Sym *)symtab_section->data.data())[sym_index];
-    *pval = sym->st_value;
-    return sym;
-}
-
-void *tcc_get_symbol_err(TCCState *s, const char *name)
-{
-    unsigned long val;
-    if (tcc_get_symbol(s, &val, name) < 0)
-        error("%s not defined", name);
-    return (void *)val;
-}
-
 /* add an elf symbol : check if it is already defined and patch
    it. Return symbol index. NOTE that sh_num can be SHN_UNDEF. */
 static int add_elf_sym(Section *s, unsigned long value, unsigned long size,
@@ -214,10 +178,6 @@ static int add_elf_sym(Section *s, unsigned long value, unsigned long size,
             } else if (sym_bind == STB_WEAK && esym_bind == STB_GLOBAL) {
                 /* weak is ignored if already global */
             } else {
-#if 0
-                printf("new_bind=%d new_shndx=%d last_bind=%d old_shndx=%d\n",
-                       sym_bind, sh_num, esym_bind, esym->st_shndx);
-#endif
                 /* NOTE: we accept that two DLL define the same symbol */
                 if (s != tcc_state->dynsymtab_section)
                     error_noabort("'%s' defined twice", name.c_str());
@@ -623,13 +583,13 @@ static void build_got_entries(TCCState *s1)
 {
     Section *s, *symtab;
     Elf32_Rel *rel, *rel_end;
-    int i, type;
+    int type;
 #ifndef TCC_TARGET_816
     Elf32_Sym *sym;
     int reloc_type, sym_index;
 #endif
 
-    for(i = 1; i < s1->sections.size(); i++) {
+    for(size_t i = 1; i < s1->sections.size(); i++) {
         s = s1->sections[i];
         if (s->sh_type != SHT_REL)
             continue;
@@ -859,7 +819,7 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
                               const int *section_order)
 {
     Section *s;
-    int j, k, size;
+    int j, size;
 
     /* include header */
     /* fprintf(f, ".incdir \"" CONFIG_TCCDIR "/include\"\n"); */
@@ -908,7 +868,7 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
             /* insert jump labels */
             if(next_jump_pos == j) {
               next_jump_pos = size;
-              for(k = 0; k < jumps.size(); k++) {
+              for(size_t k = 0; k < jumps.size(); k++) {
                 /* while we're here, look for the next jump target after this one */
                 if(jumps[k].to > j && jumps[k].to < next_jump_pos) next_jump_pos = jumps[k].to;
                 /* write the jump target label(s) for this position */
@@ -950,10 +910,9 @@ static void tcc_output_binary(TCCState *s1, FILE *f,
           int bytecount = 0;	/* how many bytes to reserve in .ramsection */
 
           /* k == 0: output .ramsection; k == 1: output .section */
-          for(k = startk; k < endk; k++) {
-
+          for(int k = startk; k < endk; k++) {
             if(k == 0) {	/* .ramsection */
-              fprintf(f, ".ramsection \"ram%s\" bank $7f slot 3\n",s->name.c_str());
+              fprintf(f, ".ramsection \"ram%s\" bank $7f slot 3\n", s->name.c_str());
             }
             else {	/* (ROM) .section */
               fprintf(f, ".section \"%s\" superfree\n", s->name.c_str());

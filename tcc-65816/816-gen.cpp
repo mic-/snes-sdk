@@ -95,7 +95,7 @@ int reg_classes[NB_REGS] = {
 
 #define EM_TCC_TARGET EM_W65
 
-#define LOCAL_LABEL "__local_%d"
+#define LOCAL_LABEL "__local_%zu"
 
 std::string current_func;
 
@@ -652,12 +652,10 @@ void gfunc_call(int nb_args)
 
 uintptr_t gjmp(int t)
 {
-  uintptr_t r;
-  int i;
   // remember this jump so we can insert a label before the destination later
-  pr("; gjmp_addr %d at %d\n",t,ind);
+  pr("; gjmp_addr %d at %d\n", t, ind);
   pr("jmp.w " LOCAL_LABEL "\n", jumps.size());
-  r = ind;
+  uintptr_t r = ind;
   for(Jump& jump : jumps) {
     if(jump.from == t) {	// the jump target is a jump itself; make it go to same place as this one
       jump.from = r;
@@ -793,7 +791,9 @@ void gen_opi(int op)
     case '*':
       if(isconst) {
         pr("; mul #%d, tcc__r%d\n", fc, r);
-        pr("lda.w #%d\nsta.b tcc__r9\n", fc);
+        pr("lda.w #%d\n"
+           "sta.b tcc__r9\n",
+           fc);
       }
       else {
         pr("; mul tcc__r%d,tcc__r%d\n",fr,r);
@@ -1202,7 +1202,15 @@ void ggoto(void)
   int r = gv(RC_INT);
   int t = vtop->type.t;
   pr("; ggoto r 0x%x t 0x%x\n",r,t);
-  pr("lda.b tcc__r%d\nsta.b tcc__r9 + 1\nsep #$20\nlda.b tcc__r%dh\nsta.b tcc__r9h + 1\nlda.b #$5c\nsta.b tcc__r9\nrep #$20\n", r, r);
+  pr("lda.b tcc__r%d\n"
+     "sta.b tcc__r9 + 1\n"
+     "sep #$20\n"
+     "lda.b tcc__r%dh\n"
+     "sta.b tcc__r9h + 1\n"
+     "lda.b #$5c\n"
+     "sta.b tcc__r9\n"
+     "rep #$20\n",
+      r, r);
   pr("jml.l tcc__r9\n");
 }
 
@@ -1254,7 +1262,13 @@ void gfunc_prolog(CType* func_type)
     n += size;
   }
   pr("; sub sp,#__%s_locals\n", current_func.c_str());
-  pr(".ifgr __%s_locals 0\ntsa\nsec\nsbc #__%s_locals\ntas\n.endif\n", current_func.c_str(), current_func.c_str());
+  pr(".ifgr __%s_locals 0\n"
+     "tsa\n"
+     "sec\n"
+     "sbc #__%s_locals\n"
+     "tas\n"
+     ".endif\n",
+     current_func.c_str(), current_func.c_str());
   loc = 0; // huh squared?
 }
 
@@ -1264,7 +1278,13 @@ std::vector<int> localnos;
 void gfunc_epilog(void)
 {
   pr("; add sp, #__%s_locals\n", current_func.c_str());
-  pr(".ifgr __%s_locals 0\ntsa\nclc\nadc #__%s_locals\ntas\n.endif\n", current_func.c_str(), current_func.c_str());
+  pr(".ifgr __%s_locals 0\n"
+     "tsa\n"
+     "clc\n"
+     "adc #__%s_locals\n"
+     "tas\n"
+     ".endif\n",
+     current_func.c_str(), current_func.c_str());
   pr("rtl\n");
   
   pr(".ends\n");
